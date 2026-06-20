@@ -502,6 +502,84 @@ inside `generateDiagram()` (the one part of the rendering engine touched
 this session) — the underlying node-value calculation and layout were not
 changed, only how that one piece of text is drawn.
 
+## Theme palette architecture
+
+Node colors are NOT literal hex strings. `node.color` is a reference object
+`{themeIndex, variant}` pointing into a global `themePalette` array (8 base
+hex colors). The actual color is derived live by `resolveThemeColor(ref)`
+every time it's needed — never cached on the node itself. This mirrors how
+Word/Excel's "Theme Colors" work: a document doesn't remember "blue", it
+remembers "Accent 3, 25% Lighter", so changing the theme's Accent 3 later
+updates every place that used it. Concretely here: editing `themePalette[3]`
+via the gradient/RGB picker immediately re-colors every node whose
+`color.themeIndex === 3`, at whatever tint/shade variant each one
+individually had chosen.
+
+### Why this shape, specifically
+
+This was a deliberate design decision (not an accident of incremental
+development): theme colors are app-level/system state (a default baked
+into `index.html`, optionally overridden by loading a theme JSON), while
+node-to-color assignment is per-diagram data (lives in the nodes array,
+travels with the data JSON). Keeping these separate means a person can
+swap in a different corporate theme and have it flow through automatically
+to every diagram built against it, without needing to re-pick every node's
+color by hand — and conversely, a single diagram's node-to-theme-slot
+assignments stay stable even as the theme's actual hues evolve.
+
+### Variant naming and the exact percentages
+
+`variant` is one of: `'base'`, `'tint0'` through `'tint4'` (lighter, tint0
+= 10% lighter up to tint4 = 80% lighter), or `'shade0'`/`'shade1'` (darker,
+shade0 = 25% darker, shade1 = 50% darker). These are the exact Microsoft
+Office theme-color picker percentages (`THEME_TINT_PERCENTS` /
+`THEME_SHADE_PERCENTS` constants), not arbitrary mix amounts — matched
+against a reference screenshot of Office's own picker rather than guessed,
+specifically because a prior version of this tool used made-up percentages
+that didn't visually match the light/dark differentiation the person
+expected from an Office-style picker. `deriveVariant(baseHex, variant)`
+does the actual mixing via `mixToward()` (linear RGB interpolation toward
+white for tints, toward black for shades).
+
+### The picker UI: two views in one popover
+
+`buildColorPopover()` renders the default grid view: 8 theme-color columns
+× 8 rows (5 tints, base, 2 shades), exactly mirroring the Office layout.
+Hovering any BASE-row swatch reveals a small pencil affordance
+(`.color-swatch-edit-affordance`); clicking it swaps the popover's content
+for `buildThemeColorEditor()`, a real gradient saturation/value square plus
+hue strip plus synchronized R/G/B and hex number inputs (HSV math via
+`hsvToRgb()`/`rgbToHsv()`). Dragging the gradient updates the RGB/hex
+fields; typing into the RGB/hex fields moves the gradient cursor — both
+directions read/write the same shared `{h, s, v}` closure variables, which
+is what keeps them in sync. Every edit immediately writes to
+`themePalette[themeIndex]`, calls `generateDiagram()` and `renderNodes()`
+to re-render live, and saves to localStorage — there's no separate "Apply"
+step. A back chevron returns to the grid view. Both the gradient square and
+hue strip support touch as well as mouse dragging (`touchstart` /
+`touchmove` / `touchend` alongside the `mousedown`/`mousemove`/`mouseup`
+handlers, normalized through a shared `eventPoint()` helper) — this was a
+deliberate fix during development after confirming mouse-only handlers
+don't reliably receive synthetic events on touchscreens.
+
+### Breaking change: data file version 2
+
+Because `node.color` changed shape entirely (literal hex string →
+`{themeIndex, variant}` reference object), old data JSON files are
+genuinely incompatible, not just stylistically different. This was a
+deliberate decision, not an oversight: `exportJSON()`/the import handler
+now read/write `version: 2`, and importing a file that isn't exactly
+`version === 2` (or whose node colors aren't shaped like reference objects)
+is rejected outright with a specific, actionable error message rather than
+silently misinterpreted or auto-migrated. The bundled sample files
+(`sankey_data_*.json`) were regenerated to the new schema as part of this
+change. The old "branding profile" JSON concept (a separate file mapping
+node names to literal hex colors) was retired entirely and replaced by a
+much smaller **theme JSON** (`exportTheme()`/`importTheme()`,
+`{themeVersion, themePalette}` — just the 8 base colors, nothing about
+nodes at all), reflecting the new separation between theme (system/app
+level) and node-to-slot assignment (per-diagram data).
+
 ## Change log (high-level)
 
 - **V1:** Plotly + MutationObserver gradient injection hack. Shipped with
@@ -549,7 +627,7 @@ changed, only how that one piece of text is drawn.
   toggle (see above) at the same time, including several rendered-and-
   rejected iterations of the brush filter before landing on a version
   confirmed visible at realistic ribbon thickness.
-- **V5 (current):** Scope for this session was explicit: the diagram engine,
+- **V5:** Scope for this session was explicit: the diagram engine,
   color/style toggles, and data model were locked — "don't change the
   output or functionality around the Sankey diagram" — everything else was
   open for a genuine rethink. Removed the dead Render Layout button after
@@ -573,23 +651,88 @@ changed, only how that one piece of text is drawn.
   picker open/select/close flow, inline rename cascading to flow links,
   auto-focus on node creation, localStorage round-tripping, and layout at
   both mobile and desktop widths.
+- **V6 (current):** Three changes, one of which (the width fix) took
+  several real iterations to get right — each wrong version is recorded
+  below because the failure modes are non-obvious and easy to
+  reintroduce. (1) Removed the headline/subhead sentence above the
+  diagram entirely, per direct request — the diagram now leads with the
+  plot. Reclaimed the vertical space (`topPad` dropped from a
+  headline-sized allowance to a flat 18px) and removed the now-fully-dead
+  `.sk-headline`/`.sk-subhead`/`.sk-col-header` CSS (col-header had been
+  unused dead code from even before this session). (2) Fixed a real "plot
+  doesn't fill the width" bug, confirmed by direct measurement
+  (`getBoundingClientRect()` on rendered node rects, not guessed): on a
+  390px mobile viewport, `leftMargin`+`rightMargin` were together
+  consuming ~70% of canvas width because they were sized to fit full
+  12.5px label text regardless of how little width was actually
+  available, leaving the ribbons a sliver. The fix went through three
+  real attempts: first, capping the margin at a fraction of container
+  width and shrinking the font to fit — this caused actual label
+  clipping ("Wearables & Home" rendering as "rables & Home") because the
+  cap was reapplied as a hard ceiling even when the floored font size
+  still didn't fit. Second, removing that hard ceiling so the margin
+  always grows to fit whatever the text needs — this stopped the
+  internal clipping, but introduced a worse, sneakier bug: letting `W`
+  (the SVG's internal coordinate width) grow past the real container
+  width caused the entire diagram to be globally downscaled by the
+  browser (the `<svg>` is `width:100%`), so a "floored" 9.5px label was
+  actually rendering far smaller than 9.5px — it LOOKED clipped in a
+  screenshot even though no boundary was cutting it off; the whole
+  coordinate space had just been shrunk. This was caught by explicitly
+  comparing the SVG's `viewBox` width against the real container's
+  `getBoundingClientRect().width` — they must never diverge, since `W`
+  exceeding the container is what triggers the downscale. Third and
+  final: when even the floored font size doesn't fit the margin budget,
+  wrap the label onto a second line (word-aware, breaks only at a space)
+  rather than truncating it or growing `W` — explicitly chosen over
+  ellipsis truncation because it preserves full meaning ("Gross Margin
+  (Profit)" stays fully readable across two lines instead of becoming
+  "Gross Ma…"). `MIN_LABEL_GAP` (the vertical collision-avoidance
+  threshold between adjacent labels) widens automatically when any label
+  in a column actually wraps, so two-line labels get enough room from
+  their neighbors. **Also discovered and fixed during this work: SVG CSS
+  class rules beat presentation attributes for font-size** — `.sk-label-
+  name { font-size: 12.5px }` in the stylesheet was silently overriding a
+  dynamically-computed `font-size="9.5"` attribute on the same element
+  (confirmed via `getComputedStyle()` in an isolated test, not assumed);
+  fixed by removing the hardcoded `font-size` from the CSS classes so the
+  per-element attribute actually takes effect. (3) Reworked the color
+  picker into a real theme-palette system — see *Theme palette
+  architecture* above for the full design. In short: node colors became
+  references into a shared 8-color `themePalette` rather than literal hex
+  values, tint/shade percentages were corrected to match Office's actual
+  picker (80/60/40/25/10% lighter, 25/50% darker — verified against a
+  reference screenshot, not guessed), and each theme color gained a real
+  gradient-square-plus-hue-strip-plus-RGB/hex editor with both input
+  directions kept in sync. This was a deliberate breaking change to the
+  data file format (bumped to `version: 2`); old files are rejected with
+  a specific error rather than silently mis-loaded, and the bundled
+  sample files were regenerated to match.
 
 ## If you're picking this up fresh
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
-architecture*, *Ribbon style toggle*, *App chrome*, then look at
-`generateDiagram()` itself. Don't reach for a charting library. Don't add a
-new CSS class without updating `getStyledSvgString()`. Don't "fix" label
-collisions by making the check more global without first understanding why
-it was deliberately scoped to edge columns only. Don't trust a CSS sizing
-fix without actually rendering and measuring it — the flexbox bug in V4
-looked fixed after a plausible-sounding code change and wasn't; it only got
-caught by building an isolated test case and reading real
-`getBoundingClientRect()` output. Keep the diagram engine and the app
-chrome conceptually separate — V5 deliberately rewrote everything outside
+architecture*, *Ribbon style toggle*, *App chrome*, *Theme palette
+architecture*, then look at `generateDiagram()` itself. Don't reach for a
+charting library. Don't add a new CSS class without updating
+`getStyledSvgString()`. Don't "fix" label collisions by making the check
+more global without first understanding why it was deliberately scoped to
+edge columns only. Don't trust a CSS sizing fix without actually rendering
+and measuring it — the flexbox bug in V4 looked fixed after a plausible-
+sounding code change and wasn't; it only got caught by building an
+isolated test case and reading real `getBoundingClientRect()` output. The
+same lesson repeated in V6's width fix: a fix that looks correct in the
+SVG's own internal coordinate space can still be wrong once you account
+for `width:100%` scaling against the real container — always compare
+`viewBox` width against the actual rendered container width, not just
+internal layout math. Keep the diagram engine and the app chrome
+conceptually separate — V5 deliberately rewrote everything outside
 `generateDiagram()` while leaving the function itself untouched except for
-the one labeled exception (the value chip text treatment); if a future
-session is asked to touch the UI again, the same boundary likely still
-applies unless told otherwise. When in doubt about a design choice, it's
-probably encoded in this file already — search for it before re-deciding
-it.
+the one labeled exception (the value chip text treatment); V6 touched
+`generateDiagram()` again, but only because the request (headline removal,
+width fill) explicitly required it. Node colors are references into
+`themePalette`, never literal hex — if you find yourself writing a literal
+hex string onto `node.color`, that's very likely wrong; use
+`resolveThemeColor()` to read, and a `{themeIndex, variant}` object to
+write. When in doubt about a design choice, it's probably encoded in this
+file already — search for it before re-deciding it.

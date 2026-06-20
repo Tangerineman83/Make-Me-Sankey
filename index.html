@@ -29,6 +29,21 @@
         .interactive-row:hover { background-color: #f8fafc; }
 
         /* ---- Hand-authored Sankey SVG: presentation layer ---- */
+        /* Design tokens derived from research on Bloomberg / McKinsey / FT / Economist
+           and finance-Sankey exemplars (SankeyArt, SankeyMATIC, USAFacts): a neutral
+           base carries most flows, one or two saturated accents carry meaning, ribbons
+           are flat (no gradients), and numerals are tabular so values align in columns. */
+        :root {
+            --sk-canvas: #f7f5f1;          /* warm off-white ground, not stark white */
+            --sk-neutral-ribbon: #aab1bd;  /* restrained-mode flow color */
+            --sk-neutral-node: #7c8694;    /* restrained-mode node color */
+            --sk-accent-profit: #1f8a5f;   /* gross margin / profit */
+            --sk-accent-cost: #c0533e;     /* cost / expense */
+            --sk-ink: #1c2127;
+            --sk-ink-muted: #767f8c;
+        }
+
+        #sankey-canvas-shell { background: var(--sk-canvas); border-radius: 16px; }
         #sankey-svg { width: 100%; height: 100%; display: block; }
 
         .sk-ribbon {
@@ -36,10 +51,10 @@
             cursor: pointer;
         }
         .sk-ribbon:hover {
-            filter: brightness(1.08);
+            filter: brightness(0.94);
         }
         .sk-ribbon.is-dimmed {
-            opacity: 0.07 !important;
+            opacity: 0.10 !important;
         }
 
         .sk-node {
@@ -47,18 +62,14 @@
             transition: filter 0.16s ease, opacity 0.16s ease;
         }
         .sk-node:hover {
-            filter: brightness(1.1);
+            filter: brightness(1.08);
         }
         .sk-node.is-dimmed {
-            opacity: 0.3;
-        }
-        .sk-node.is-selected {
-            stroke: #0f172a;
-            stroke-width: 1.5px;
+            opacity: 0.32;
         }
 
         .sk-leader {
-            stroke: #cbd5e1;
+            stroke: #c7c2b8;
             stroke-width: 1px;
         }
 
@@ -66,27 +77,44 @@
             font-family: 'Inter', system-ui, sans-serif;
             font-weight: 600;
             font-size: 12.5px;
-            fill: #1e293b;
+            fill: var(--sk-ink);
             letter-spacing: -0.006em;
             cursor: pointer;
             transition: opacity 0.16s ease;
         }
         .sk-label-value {
-            font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
-            font-weight: 600;
+            font-family: 'Inter', system-ui, sans-serif;
+            font-variant-numeric: tabular-nums lining-nums;
+            font-weight: 700;
             font-size: 11.5px;
-            fill: #0f172a;
+            fill: var(--sk-ink);
         }
         .sk-label.is-dimmed .sk-label-name { opacity: 0.32; }
         .sk-label.is-dimmed .sk-label-value { opacity: 0.32; }
 
         .sk-col-header {
+            font-family: 'Inter', system-ui, sans-serif;
+            font-weight: 600;
+            font-size: 10.5px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            fill: var(--sk-ink-muted);
+        }
+
+        .sk-headline {
             font-family: 'Space Grotesk', 'Inter', sans-serif;
             font-weight: 600;
-            font-size: 11px;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            fill: #94a3b8;
+            fill: var(--sk-ink);
+        }
+        .sk-subhead {
+            font-family: 'Inter', system-ui, sans-serif;
+            font-weight: 500;
+            fill: var(--sk-ink-muted);
+        }
+
+        #palette-restrained-btn, #palette-branded-btn { color: #64748b; }
+        #palette-restrained-btn.is-active, #palette-branded-btn.is-active {
+            background: #0f172a; color: #fff;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -197,22 +225,29 @@
             </div>
 
             <div class="lg:col-span-5 glass-card p-5 shadow-sm flex flex-col min-h-[540px]">
-                <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                    <div>
-                        <h2 class="font-bold text-base text-slate-800 tracking-tight">Sankey Output Canvas</h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Crisp gradient flows, ready to present</p>
+                <div class="flex flex-col gap-3 mb-4 pb-3 border-b border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="font-bold text-base text-slate-800 tracking-tight">Sankey Output Canvas</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Restrained palette, direct labels, ready to present</p>
+                        </div>
                     </div>
-                    
-                    <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
-                        <span class="text-xs font-semibold text-slate-500">Flow Fade:</span>
-                        <input type="range" id="global-opacity-slider" min="0" max="100" value="40" 
-                               class="w-24 accent-slate-900 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                               oninput="updateCanvasOpacity(this.value)">
-                        <span id="opacity-slider-readout" class="text-xs font-mono font-bold text-slate-700 min-w-[34px] text-right">40%</span>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="flex items-center bg-slate-50 border border-slate-200 rounded-xl p-1">
+                            <button id="palette-restrained-btn" onclick="setPaletteMode('restrained')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Restrained</button>
+                            <button id="palette-branded-btn" onclick="setPaletteMode('branded')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Branded</button>
+                        </div>
+                        <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
+                            <span class="text-xs font-semibold text-slate-500">Flow Fade:</span>
+                            <input type="range" id="global-opacity-slider" min="0" max="100" value="45" 
+                                   class="w-20 accent-slate-900 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                   oninput="updateCanvasOpacity(this.value)">
+                            <span id="opacity-slider-readout" class="text-xs font-mono font-bold text-slate-700 min-w-[34px] text-right">45%</span>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="flex-1 bg-transparent p-2 rounded-xl border border-dashed border-slate-200 flex items-center justify-center min-h-[460px] relative">
+                <div id="sankey-canvas-shell" class="flex-1 p-3 flex items-center justify-center min-h-[460px] relative">
                     <div id="sankey-chart" class="w-full h-full"></div>
                 </div>
             </div>
@@ -227,21 +262,23 @@
         let nodes = [];
         let links = [];
         let chartDiv = null;
-        let globalOpacityValue = 0.40; 
+        let globalOpacityValue = 0.45; 
+        let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let activeGradientsCache = [];
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v13', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v14', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v13');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v14');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
                     links = data.links || [];
-                    globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.40;
+                    globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
+                    paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                 }
             } catch (e) {}
         }
@@ -249,6 +286,14 @@
         function updateCanvasOpacity(value) {
             globalOpacityValue = parseFloat(value) / 100;
             document.getElementById('opacity-slider-readout').innerText = value + '%';
+            generateDiagram();
+            saveToLocalStorage();
+        }
+
+        function setPaletteMode(mode) {
+            paletteMode = mode === 'branded' ? 'branded' : 'restrained';
+            document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
+            document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             generateDiagram();
             saveToLocalStorage();
         }
@@ -422,9 +467,7 @@
 
         // Assigns each node to a column (rank) by longest-path-from-source, so the
         // diagram reads left-to-right in true topological order regardless of the
-        // order nodes/links were entered in. A node with no inflow is rank 0; every
-        // other node's rank is one more than the maximum rank of its predecessors.
-        // Falls back gracefully (rank 0) on cyclic input rather than infinite-looping.
+        // order nodes/links were entered in.
         function assignColumns(nodeNames, validLinks) {
             const rank = {};
             nodeNames.forEach(n => rank[n] = 0);
@@ -451,11 +494,9 @@
             return rank;
         }
 
-        // Two-pass proportional height sizing (technique: give every node its
-        // proportional share of the column's available height, floored at a
-        // minimum so thin flows stay visible/legible; if that floor pushes the
-        // total past what's available, scale every node down by the same factor
-        // so the column never overflows its own track).
+        // Two-pass proportional height sizing: proportional share first, floored at a
+        // minimum so thin flows stay legible; if the floor pushes the total past what's
+        // available, every node scales down by the same factor so the column never overflows.
         function layoutColumn(colNodes, usableH, topPad, gap) {
             const total = colNodes.reduce((sum, n) => sum + n.value, 0) || 1;
             const totalGap = gap * Math.max(colNodes.length - 1, 0);
@@ -467,7 +508,7 @@
             const scale = rawTotal > available ? available / rawTotal : 1;
 
             const totalUsed = rawHeights.reduce((s, h) => s + h * scale, 0) + totalGap;
-            let y = topPad + (usableH - totalUsed) / 2; // vertically center the column as a whole
+            let y = topPad + (usableH - totalUsed) / 2;
 
             return colNodes.map((n, i) => {
                 const h = rawHeights[i] * scale;
@@ -475,6 +516,36 @@
                 y += h + gap;
                 return seg;
             });
+        }
+
+        // ---- Semantic palette resolution (research: restrained neutral base + 1-2 hero accents) ----
+        // A node is treated as a "profit/margin" destination or a "cost" destination by matching
+        // its name against common financial vocabulary. This is intentionally just a default
+        // heuristic for the restrained mode — any node can still be recolored manually, and the
+        // Branded mode bypasses this entirely and uses each node's own assigned color throughout.
+        const PROFIT_WORDS = /\b(profit|margin|income|earning|net income|ebit|ebitda)\b/i;
+        const COST_WORDS = /\b(cost|expense|opex|capex|loss|tax(es)?|spend(ing)?)\b/i;
+
+        function semanticRole(name) {
+            if (PROFIT_WORDS.test(name)) return 'profit';
+            if (COST_WORDS.test(name)) return 'cost';
+            return 'neutral';
+        }
+
+        function resolveNodeColor(name, explicitColor) {
+            if (paletteMode === 'branded') return explicitColor || 'var(--sk-neutral-node)';
+            const role = semanticRole(name);
+            if (role === 'profit') return 'var(--sk-accent-profit)';
+            if (role === 'cost') return 'var(--sk-accent-cost)';
+            return 'var(--sk-neutral-node)';
+        }
+
+        function resolveRibbonColor(targetName, targetExplicitColor) {
+            if (paletteMode === 'branded') return targetExplicitColor || 'var(--sk-neutral-ribbon)';
+            const role = semanticRole(targetName);
+            if (role === 'profit') return 'var(--sk-accent-profit)';
+            if (role === 'cost') return 'var(--sk-accent-cost)';
+            return 'var(--sk-neutral-ribbon)';
         }
 
         function generateDiagram() {
@@ -511,34 +582,38 @@
             const colNodeNames = Array.from({ length: numCols }, () => []);
             nodeNames.forEach(name => { colNodeNames[rank[name]].push(name); });
 
-            // ---- Per-node total value (inflow if it has any, else outflow) ----
             function nodeValue(name) {
                 const inflow = validLinks.filter(l => l.target === name).reduce((s, l) => s + l.value, 0);
                 const outflow = validLinks.filter(l => l.source === name).reduce((s, l) => s + l.value, 0);
                 return inflow > 0 ? inflow : outflow;
             }
 
-            // ---- Sizing constants ----
+            // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
             const labelFont = '600 12.5px Inter, system-ui, sans-serif';
-            const valueFont = '600 11.5px "IBM Plex Mono", monospace';
-            const colHeaderFont = '600 11px Space Grotesk, Inter, sans-serif';
+            const valueFont = '700 11.5px Inter, system-ui, sans-serif';
+            const headlineFont = '600 16px Space Grotesk, Inter, sans-serif';
 
             const leftNames = colNodeNames[0];
             const rightNames = colNodeNames[numCols - 1];
-            const widestLeft = Math.max(0, ...leftNames.map(n => measureTextWidth(n, labelFont)));
-            const widestRight = Math.max(0, ...rightNames.map(n => measureTextWidth(n, labelFont)));
-            const leftMargin = Math.ceil(widestLeft + 38);
-            const rightMargin = Math.ceil(widestRight + 38);
+            const widestLeft = Math.max(0, ...leftNames.map(n => Math.max(
+                measureTextWidth(n, labelFont), measureTextWidth(formatFlowValue(nodeValue(n)), valueFont)
+            )));
+            const widestRight = Math.max(0, ...rightNames.map(n => Math.max(
+                measureTextWidth(n, labelFont), measureTextWidth(formatFlowValue(nodeValue(n)), valueFont)
+            )));
+            const leftMargin = Math.ceil(widestLeft + 40);
+            const rightMargin = Math.ceil(widestRight + 40);
 
             const containerRect = container.getBoundingClientRect();
             const W = Math.max(containerRect.width || 900, 600);
-            const colHeaderH = 26;
-            const topPad = 24 + colHeaderH;
+            const headlineH = 44;
+            const colHeaderH = 22;
+            const topPad = headlineH + colHeaderH + 14;
             const bottomPad = 20;
-            const H = Math.max(440, Math.min(720, nodeNames.length * 30 + topPad + bottomPad));
+            const H = Math.max(460, Math.min(740, nodeNames.length * 30 + topPad + bottomPad));
             const usableH = H - topPad - bottomPad;
 
-            const nodeThickness = 14;
+            const nodeThickness = 12;
             const plotLeft = leftMargin;
             const plotRight = W - rightMargin;
             const plotWidth = Math.max(plotRight - plotLeft, 100);
@@ -547,7 +622,9 @@
             );
 
             // ---- Build + lay out each column ----
-            const gapFor = (count) => Math.max(4, Math.min(22, 320 / Math.max(count, 1)));
+            // Generous gap (research: premium examples use noticeably more vertical
+            // breathing room between nodes than default chart-library packing).
+            const gapFor = (count) => Math.max(8, Math.min(30, 420 / Math.max(count, 1)));
             const laidOut = colNodeNames.map(names => {
                 const colNodes = names.map(name => ({
                     name,
@@ -558,9 +635,7 @@
             });
             const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));
 
-            // ---- Ribbons: route every valid link through its (source col -> target col) pair ----
-            // Stacked in display order per node so ribbons from/to the same node never cross
-            // each other at that node's edge.
+            // ---- Ribbons ----
             const sourceCursors = new Map();
             const targetCursors = new Map();
             laidOut.forEach(col => col.forEach(n => {
@@ -568,8 +643,6 @@
                 targetCursors.set(n.name, n.y0);
             }));
 
-            // Process links grouped by source column, source nodes in display order, so the
-            // stacking cursor logic is well-defined for arbitrary (non-adjacent) column jumps.
             const linksByRank = [...validLinks].sort((a, b) => {
                 const ra = rank[a.source], rb = rank[b.source];
                 if (ra !== rb) return ra - rb;
@@ -593,7 +666,7 @@
                 return {
                     source: l.source, target: l.target, value: l.value,
                     sRank, tRank, sy0, sy1, ty0, ty1,
-                    sourceColor: sNode.color, targetColor: tNode.color
+                    fillColor: resolveRibbonColor(l.target, tNode.color)
                 };
             }).filter(Boolean);
 
@@ -601,15 +674,7 @@
 
             // ---- Build SVG ----
             let svg = '';
-            const gradientDefs = ribbons.map((r, idx) =>
-                `<linearGradient id="flow-grad-${idx}" gradientUnits="userSpaceOnUse" x1="${colX[r.sRank]}" y1="0" x2="${colX[r.tRank]}" y2="0">
-                    <stop offset="0%" stop-color="${r.sourceColor}"/>
-                    <stop offset="30%" stop-color="${r.sourceColor}" stop-opacity="${Math.max(globalOpacityValue, 0.6)}"/>
-                    <stop offset="70%" stop-color="${r.targetColor}" stop-opacity="${Math.max(globalOpacityValue, 0.6)}"/>
-                    <stop offset="100%" stop-color="${r.targetColor}"/>
-                </linearGradient>`
-            ).join('');
-            svg += `<defs>${gradientDefs}</defs>`;
+            svg += `<rect class="sk-canvas-bg" x="0" y="0" width="${W}" height="${H}" fill="var(--sk-canvas)"/>`;
 
             function ribbonPath(x0, x1, r) {
                 const midX = (x0 + x1) / 2;
@@ -619,51 +684,102 @@
                     C ${midX} ${r.ty1}, ${midX} ${r.sy1}, ${x0} ${r.sy1} Z`;
             }
 
-            ribbons.forEach((r, idx) => {
+            // Flat solid fills at a research-supported resting opacity (~0.4-0.5), lifted
+            // on hover/selection rather than carrying a gradient — the single highest-impact
+            // change from the original Plotly-style multi-hue gradient ribbons.
+            ribbons.forEach(r => {
                 const x0 = colX[r.sRank], x1 = colX[r.tRank];
-                svg += `<path d="${ribbonPath(x0, x1, r)}" fill="url(#flow-grad-${idx})" class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
+                svg += `<path d="${ribbonPath(x0, x1, r)}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}" class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
             });
 
             // ---- Nodes ----
             laidOut.forEach((col, c) => {
                 col.forEach(n => {
                     const x = colX[c] - nodeThickness / 2;
-                    svg += `<rect x="${x}" y="${n.y0}" width="${nodeThickness}" height="${Math.max(n.y1 - n.y0, 1)}" rx="2.5" fill="${n.color}" stroke="rgba(15,23,42,0.08)" stroke-width="1" class="sk-node" data-name="${escapeAttr(n.name)}"><title>${escapeAttr(n.name)}: ${formatFlowValue(n.value)}</title></rect>`;
+                    const fill = resolveNodeColor(n.name, n.color);
+                    svg += `<rect x="${x}" y="${n.y0}" width="${nodeThickness}" height="${Math.max(n.y1 - n.y0, 1)}" rx="2" fill="${fill}" stroke="rgba(28,33,39,0.10)" stroke-width="1" class="sk-node" data-name="${escapeAttr(n.name)}"><title>${escapeAttr(n.name)}: ${formatFlowValue(n.value)}</title></rect>`;
                 });
             });
 
-            // ---- Floating labels with leader lines (outside the flow, in margin space) ----
-            const MIN_LABEL_GAP = 26;
+            // ---- Labels ----
+            // Only the leftmost and rightmost columns get full floating text labels —
+            // they're the only columns with dedicated margin space reserved for them
+            // (leftMargin/rightMargin, sized by actually measuring the longest label).
+            // Middle columns have no safe space of their own between two flow columns,
+            // which is exactly what caused the original bug (a middle-column label text
+            // box reaching into the right column's space on a narrow viewport). Middle
+            // nodes instead get a small in-place value chip directly on the node, plus
+            // the full name on hover via the native <title> tooltip already attached.
+            const MIN_LABEL_GAP = 22;
+
             laidOut.forEach((col, c) => {
                 const isLeftmost = c === 0;
                 const isRightmost = c === numCols - 1;
-                const isLeftSide = isLeftmost || (!isRightmost && c < (numCols - 1) / 2);
-                let lastLabelMidY = -Infinity;
+                const isEdgeColumn = isLeftmost || isRightmost;
 
-                col.forEach(n => {
-                    const midY = (n.y0 + n.y1) / 2;
-                    const nodeHeight = n.y1 - n.y0;
-                    const tooThin = nodeHeight < 9;
-                    const wouldCollide = midY - lastLabelMidY < MIN_LABEL_GAP;
-                    const showLabel = !tooThin && !wouldCollide;
+                if (isEdgeColumn) {
+                    const isLeftSide = isLeftmost;
+                    let lastShownMidY = -Infinity;
 
-                    const x = colX[c];
-                    const edgeX = isLeftSide ? x - nodeThickness / 2 : x + nodeThickness / 2;
-                    const leaderLen = isLeftmost || isRightmost ? 10 : 7;
-                    const leaderEndX = isLeftSide ? edgeX - leaderLen : edgeX + leaderLen;
-                    const textX = isLeftSide ? leaderEndX - 6 : leaderEndX + 6;
-                    const anchor = isLeftSide ? 'end' : 'start';
+                    col.forEach(n => {
+                        const midY = (n.y0 + n.y1) / 2;
+                        const nodeHeight = n.y1 - n.y0;
+                        const tooThin = nodeHeight < 9;
+                        const wouldCollide = midY - lastShownMidY < MIN_LABEL_GAP;
+                        const showLabel = !tooThin && !wouldCollide;
 
-                    if (!showLabel) return;
-                    lastLabelMidY = midY;
+                        const x = colX[c];
+                        const edgeX = isLeftSide ? x - nodeThickness / 2 : x + nodeThickness / 2;
+                        const leaderLen = 10;
+                        const leaderEndX = isLeftSide ? edgeX - leaderLen : edgeX + leaderLen;
+                        const textX = isLeftSide ? leaderEndX - 6 : leaderEndX + 6;
+                        const anchor = isLeftSide ? 'end' : 'start';
 
-                    svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
-                    svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
-                    svg += `<text x="${textX}" y="${midY - 3}" text-anchor="${anchor}" class="sk-label-name">${escapeHtml(n.name)}</text>`;
-                    svg += `<text x="${textX}" y="${midY + 12}" text-anchor="${anchor}" class="sk-label-value">${formatFlowValue(n.value)}</text>`;
-                    svg += `</g>`;
-                });
+                        if (!showLabel) return;
+                        lastShownMidY = midY;
+
+                        svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                        svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
+                        svg += `<text x="${textX}" y="${midY - 3}" text-anchor="${anchor}" class="sk-label-name">${escapeHtml(n.name)}</text>`;
+                        svg += `<text x="${textX}" y="${midY + 12}" text-anchor="${anchor}" class="sk-label-value">${formatFlowValue(n.value)}</text>`;
+                        svg += `</g>`;
+                    });
+                } else {
+                    // Middle column: no floating text label (no safe space for one between
+                    // adjacent flow columns). The node itself remains hoverable/clickable
+                    // with its full name + value in the native tooltip already set on the
+                    // <rect> above; here we add only a tiny value chip if the node is tall
+                    // enough to hold one without crowding its neighbors.
+                    let lastChipMidY = -Infinity;
+                    col.forEach(n => {
+                        const midY = (n.y0 + n.y1) / 2;
+                        const nodeHeight = n.y1 - n.y0;
+                        const tallEnough = nodeHeight >= 16;
+                        const wouldCollide = midY - lastChipMidY < MIN_LABEL_GAP;
+                        if (!tallEnough || wouldCollide) return;
+                        lastChipMidY = midY;
+
+                        const x = colX[c];
+                        svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                        svg += `<text x="${x}" y="${midY + 3.5}" text-anchor="middle" class="sk-label-value" font-size="9.5" fill="#fff" style="paint-order: stroke; stroke: rgba(28,33,39,0.55); stroke-width: 3px; stroke-linejoin: round;">${formatFlowValue(n.value)}</text>`;
+                        svg += `</g>`;
+                    });
+                }
             });
+
+            // ---- Headline + subhead (research: the chart states the takeaway as a sentence) ----
+            const totalThroughput = colNodeNames[0].reduce((s, n) => s + nodeValue(n), 0);
+            const profitNode = nodeNames.find(n => semanticRole(n) === 'profit');
+            let headlineText = 'Flow breakdown';
+            let subheadText = `${formatFlowValue(totalThroughput)} total, across ${nodeNames.length} nodes`;
+            if (profitNode) {
+                const profitValue = nodeValue(profitNode);
+                const pct = totalThroughput > 0 ? (profitValue / totalThroughput * 100) : 0;
+                headlineText = `${profitNode} is ${formatFlowValue(pct)}% of total throughput`;
+                subheadText = `${formatFlowValue(totalThroughput)} total in \u00b7 ${formatFlowValue(profitValue)} to ${profitNode}`;
+            }
+            svg += `<text x="${plotLeft}" y="26" class="sk-headline" font-size="16">${escapeHtml(headlineText)}</text>`;
+            svg += `<text x="${plotLeft}" y="44" class="sk-subhead" font-size="11.5">${escapeHtml(subheadText)}</text>`;
 
             container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
             chartDiv = container.querySelector('#sankey-svg');
@@ -679,7 +795,7 @@
             return escapeHtml(s).replace(/"/g, '&quot;');
         }
 
-        // Hovering a node or ribbon highlights only what's connected to it; the rest dims.
+        // Hovering a node, label, or ribbon highlights only what's connected to it.
         function attachLinkHighlighting() {
             const svgEl = chartDiv;
             if (!svgEl) return;
@@ -725,8 +841,6 @@
             });
         }
 
-        // Plain-text equivalent for screen readers, since the chart's meaning shouldn't
-        // depend on color or spatial position alone.
         function renderAccessibleSummary(validLinks) {
             const svgEl = chartDiv;
             if (!svgEl) return;
@@ -800,6 +914,23 @@
         // Exports the live, fully-styled SVG exactly as rendered, with no background
         // fill — the diagram is transparent by default since we never paint one,
         // which keeps the file usable directly in decks, docs, or other designs.
+        // Resolves the var(--sk-*) custom properties used on-screen into concrete values,
+        // since a standalone SVG file opened outside this page has no access to the page's
+        // :root declarations — without this, every accent/neutral color would render as
+        // black (the SVG fallback for an unresolved var()).
+        const SK_TOKEN_VALUES = {
+            '--sk-canvas': '#f7f5f1',
+            '--sk-neutral-ribbon': '#aab1bd',
+            '--sk-neutral-node': '#7c8694',
+            '--sk-accent-profit': '#1f8a5f',
+            '--sk-accent-cost': '#c0533e',
+            '--sk-ink': '#1c2127',
+            '--sk-ink-muted': '#767f8c'
+        };
+        function resolveTokens(str) {
+            return str.replace(/var\((--[a-z-]+)\)/g, (m, token) => SK_TOKEN_VALUES[token] || m);
+        }
+
         function getStyledSvgString() {
             const svgEl = chartDiv;
             if (!svgEl) return null;
@@ -807,16 +938,32 @@
             const clone = svgEl.cloneNode(true);
             clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
+            // Export is transparent-background by design (per requirement): the on-screen
+            // warm canvas tone is a preview affordance, not part of the exported asset, so
+            // the SVG drops cleanly onto decks, docs, or any other background downstream.
+            const bgRect = clone.querySelector('rect.sk-canvas-bg');
+            if (bgRect) bgRect.remove();
+
+            // Resolve every var(--sk-*) reference left in fill/stroke attributes to its
+            // concrete hex value (covers node/ribbon fills, which are set as element
+            // attributes rather than through the stylesheet below).
+            clone.querySelectorAll('[fill], [stroke]').forEach(el => {
+                const fill = el.getAttribute('fill');
+                const stroke = el.getAttribute('stroke');
+                if (fill && fill.includes('var(')) el.setAttribute('fill', resolveTokens(fill));
+                if (stroke && stroke.includes('var(')) el.setAttribute('stroke', resolveTokens(stroke));
+            });
+
             // Inline the stylesheet rules our classes depend on, since a standalone SVG
             // file opened outside this page has no access to its <style> block.
             const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
             styleEl.textContent = `
-                .sk-ribbon { }
-                .sk-node { }
-                .sk-leader { stroke: #cbd5e1; stroke-width: 1px; }
-                .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12.5px; fill: #1e293b; letter-spacing: -0.006em; }
-                .sk-label-value { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 11.5px; fill: #0f172a; }
-                .sk-col-header { font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; fill: #94a3b8; }
+                .sk-leader { stroke: #c7c2b8; stroke-width: 1px; }
+                .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12.5px; fill: #1c2127; letter-spacing: -0.006em; }
+                .sk-label-value { font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; font-size: 11.5px; fill: #1c2127; }
+                .sk-col-header { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: 0.06em; fill: #767f8c; }
+                .sk-headline { font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 600; fill: #1c2127; }
+                .sk-subhead { font-family: Inter, system-ui, sans-serif; font-weight: 500; fill: #767f8c; }
             `;
             clone.insertBefore(styleEl, clone.firstChild);
 
@@ -842,7 +989,7 @@
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v13');
+            localStorage.removeItem('sankeyWorkspaceData_v14');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }
@@ -887,6 +1034,8 @@
             const slider = document.getElementById('global-opacity-slider');
             slider.value = Math.round(globalOpacityValue * 100);
             document.getElementById('opacity-slider-readout').innerText = slider.value + '%';
+            document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
+            document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             
             if (nodes.length === 0) {
                 loadDefaultExample();

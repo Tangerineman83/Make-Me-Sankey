@@ -8,110 +8,116 @@
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
         
         body { font-family: 'Inter', system_ui, sans-serif; }
-        .title-font { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.025em; }
+        .title-font { font-family: 'Space Grotesk', 'Inter', sans-serif; }
 
-        .section-card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.05), 0 4px 6px -4px rgb(15 23 42 / 0.05);
-            border: 1px solid #e2e8f0;
-        }
+        /* Custom subtle scrollbars for high-density data views */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        .sankey-container {
-            background: #f8fafc;
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
             border-radius: 16px;
-            box-shadow: inset 0 2px 4px 0 rgb(15 23 42 / 0.03);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        .modern-table { border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
-        .flow-row { transition: background-color 0.1s ease; }
-        .flow-row:hover { background-color: #f8fafc; }
-        .node-item { transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1); }
-        .node-item:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgb(15 23 42 / 0.1); }
+        
+        .interactive-row { transition: all 0.15s ease; }
+        .interactive-row:hover { background-color: #f8fafc; }
     </style>
 </head>
-<body class="bg-slate-100">
-    <div class="max-w-[1280px] mx-auto px-4 py-6 sm:px-6">
+<body class="bg-[#f4f6f9] text-slate-800 min-h-screen">
+    <div class="max-w-[1600px] mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
-        <!-- Header -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-6 border-b border-slate-200">
             <div>
-                <h1 class="text-4xl sm:text-5xl font-semibold title-font text-slate-900 tracking-tighter">Make Me Sankey!</h1>
-                <p class="text-slate-600 mt-1 text-lg">Beautiful, high-resolution Sankey diagrams — instantly</p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-200">
+                        <i class="fa-solid fa-diagram-project text-lg"></i>
+                    </div>
+                    <h1 class="text-3xl font-bold title-font text-slate-900 tracking-tight">Make Me Sankey!</h1>
+                </div>
+                <p class="text-slate-500 mt-1.5 text-sm sm:text-base">Produce beautiful, high-resolution flow models and multi-tier distribution networks instantly.</p>
             </div>
             
-            <div class="flex flex-wrap gap-2">
-                <div class="flex bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
-                    <button onclick="importJSON()" class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
-                        <i class="fa-solid fa-upload"></i>
-                        <span class="hidden sm:inline">Import</span>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+                    <button onclick="importJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Import Flow JSON File">
+                        <i class="fa-solid fa-file-import text-slate-400"></i>
+                        <span>Import</span>
                     </button>
-                    <button onclick="exportJSON()" class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
-                        <i class="fa-solid fa-download"></i>
-                        <span class="hidden sm:inline">Export JSON</span>
+                    <button onclick="exportJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Export Structure to JSON">
+                        <i class="fa-solid fa-file-code text-slate-400"></i>
+                        <span>Export Data</span>
                     </button>
                 </div>
 
-                <div class="flex bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
-                    <button onclick="generateDiagram()" class="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm">
-                        <i class="fa-solid fa-sync-alt"></i>
-                        <span>Generate</span>
+                <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+                    <button onclick="generateDiagram()" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-sm">
+                        <i class="fa-solid fa-rotate animate-spin-slow"></i>
+                        <span>Render</span>
                     </button>
-                    <button onclick="exportSVG()" class="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
-                        <i class="fa-solid fa-file-export"></i>
+                    <div class="w-[1px] h-6 bg-slate-200 mx-1"></div>
+                    <button onclick="exportSVG()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Export Vector SVG for Presentations">
+                        <i class="fa-solid fa-vector-square"></i>
                     </button>
-                    <button onclick="exportPNG()" class="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
+                    <button onclick="exportPNG()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Export Ultra-High-Res Image (3x Scale)">
                         <i class="fa-solid fa-image"></i>
                     </button>
                 </div>
 
-                <button onclick="resetAll()" class="px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 active:bg-red-100 rounded-2xl border border-red-200 transition-all flex items-center gap-2">
-                    <i class="fa-solid fa-undo"></i>
-                    <span class="hidden sm:inline">Reset</span>
+                <button onclick="resetAll()" class="px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
+                    <span>Clear Canvas</span>
                 </button>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
-            <!-- Nodes -->
-            <div class="lg:col-span-3 section-card p-5">
-                <div class="flex items-center justify-between mb-4">
+            <div class="lg:col-span-3 glass-card p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                     <div>
-                        <h2 class="font-semibold text-xl text-slate-800">Nodes</h2>
-                        <p class="text-xs text-slate-500 mt-0.5">Max 10 • Tap to edit</p>
+                        <h2 class="font-bold text-base text-slate-800 tracking-tight flex items-center gap-2">
+                            <span>Nodes Configuration</span>
+                            <span id="node-count-badge" class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full font-mono font-medium">0</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Define network structural targets</p>
                     </div>
-                    <button onclick="addNode()" class="flex items-center justify-center w-9 h-9 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-2xl transition-all shadow-sm">
-                        <i class="fa-solid fa-plus"></i>
+                    <button onclick="addNode()" class="w-8 h-8 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg transition-all flex items-center justify-center shadow-sm border border-emerald-200" title="Create New Element Node">
+                        <i class="fa-solid fa-plus text-sm"></i>
                     </button>
                 </div>
-                <div id="nodes-list" class="space-y-2 max-h-[380px] overflow-auto pr-1"></div>
+                <div id="nodes-list" class="space-y-2.5 max-h-[580px] overflow-y-auto pr-1"></div>
             </div>
 
-            <!-- Flows -->
-            <div class="lg:col-span-5 section-card p-5 flex flex-col">
-                <div class="flex items-center justify-between mb-4">
+            <div class="lg:col-span-5 glass-card p-5 shadow-sm flex flex-col">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                     <div>
-                        <h2 class="font-semibold text-xl text-slate-800">Flows</h2>
-                        <p class="text-xs text-slate-500">Up to ~20 per node</p>
+                        <h2 class="font-bold text-base text-slate-800 tracking-tight flex items-center gap-2">
+                            <span>Flow Mapping matrix</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Construct mapping intersections & volumetric metrics</p>
                     </div>
-                    <button onclick="addFlowRow()" class="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black active:bg-slate-950 text-white text-sm font-semibold rounded-2xl transition-all">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                        <span class="hidden sm:inline">Add Flow</span>
+                    <button onclick="addFlowRow()" class="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-all shadow-sm">
+                        <i class="fa-solid fa-circle-plus text-xs"></i>
+                        <span>Add Connection</span>
                     </button>
                 </div>
                 
-                <div class="flex-1 overflow-auto modern-table">
-                    <table class="w-full text-sm min-w-[520px]">
-                        <thead class="bg-slate-50 sticky top-0 z-10">
+                <div class="flex-1 overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-inner">
+                    <table class="w-full text-xs min-w-[460px]">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
                             <tr>
-                                <th class="px-4 py-3 text-left font-semibold text-slate-600">Source</th>
-                                <th class="px-4 py-3 text-left font-semibold text-slate-600">Target</th>
-                                <th class="px-4 py-3 text-left font-semibold text-slate-600 w-24">Value</th>
-                                <th class="w-10"></th>
+                                <th class="px-4 py-3 text-left font-medium">Origin Source</th>
+                                <th class="px-4 py-3 text-left font-medium">Destination Target</th>
+                                <th class="px-4 py-3 text-left font-medium w-28">Value (Volume)</th>
+                                <th class="w-12"></th>
                             </tr>
                         </thead>
                         <tbody id="flows-table-body" class="divide-y divide-slate-100"></tbody>
@@ -119,21 +125,26 @@
                 </div>
             </div>
 
-            <!-- Sankey -->
-            <div class="lg:col-span-4 section-card p-5 flex flex-col">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="font-semibold text-xl text-slate-800">Sankey Diagram</h2>
-                    <button onclick="generateDiagram()" class="text-xs px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 rounded-xl font-medium flex items-center gap-1.5 transition-colors">
-                        <i class="fa-solid fa-sync-alt text-xs"></i>
-                        <span>Refresh</span>
+            <div class="lg:col-span-4 glass-card p-5 shadow-sm flex flex-col min-h-[500px]">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                    <div>
+                        <h2 class="font-bold text-base text-slate-800 tracking-tight">Interactive Analytics Sandbox</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Hover pathways to audit proportional allocations</p>
+                    </div>
+                    <button onclick="generateDiagram()" class="text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg font-medium flex items-center gap-1.5 transition-all border border-indigo-100">
+                        <i class="fa-solid fa-arrows-rotate text-xs"></i>
+                        <span>Refresh Workspace</span>
                     </button>
                 </div>
                 
-                <div class="sankey-container flex-1 p-3 rounded-2xl border border-slate-100">
-                    <div id="sankey-chart" class="w-full h-full min-h-[420px]"></div>
+                <div class="flex-1 bg-white p-2 rounded-xl border border-slate-200 shadow-inner flex items-center justify-center min-h-[480px]">
+                    <div id="sankey-chart" class="w-full h-full"></div>
                 </div>
-                <div class="mt-3 text-center">
-                    <p class="text-xs text-slate-500">Flows blend from source → destination colour (semi-transparent)</p>
+                <div class="mt-3.5 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center">
+                    <p class="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-circle-info text-indigo-400 text-sm"></i>
+                        <span>Flow channels are styled dynamically using native multi-node transparent blends.</span>
+                    </p>
                 </div>
             </div>
             
@@ -153,10 +164,11 @@
                 r: parseInt(result[1], 16),
                 g: parseInt(result[2], 16),
                 b: parseInt(result[3], 16)
-            } : { r: 100, g: 116, b: 139 };
+            } : { r: 148, g: 163, b: 184 };
         }
 
-        function blendColors(hex1, hex2, alpha = 0.42) {
+        // Generate custom semi-transparent channel blending between nodes
+        function blendColors(hex1, hex2, alpha = 0.38) {
             const rgb1 = hexToRgb(hex1);
             const rgb2 = hexToRgb(hex2);
             const r = Math.round((rgb1.r + rgb2.r) / 2);
@@ -166,12 +178,12 @@
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyData', JSON.stringify({ nodes, links })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v2', JSON.stringify({ nodes, links })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyData');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v2');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
@@ -182,25 +194,33 @@
 
         function renderNodes() {
             const container = document.getElementById('nodes-list');
+            const badge = document.getElementById('node-count-badge');
             container.innerHTML = '';
+            badge.innerText = nodes.length;
 
             if (nodes.length === 0) {
-                container.innerHTML = `<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-info-circle text-2xl mb-2 block"></i> Add your first node</div>`;
+                container.innerHTML = `
+                    <div class="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-slate-400">
+                        <i class="fa-solid fa-bezier-curve text-2xl mb-2.5 opacity-60 text-indigo-400"></i>
+                        <p class="text-xs font-medium">No system elements configured</p>
+                    </div>`;
                 return;
             }
 
             nodes.forEach((node, index) => {
                 const div = document.createElement('div');
-                div.className = `node-item flex items-center gap-3 p-3.5 bg-white border border-slate-200 rounded-2xl`;
+                div.className = `flex items-center gap-2.5 p-2 bg-white border border-slate-200 rounded-xl shadow-sm transition-all hover:border-slate-300`;
                 div.innerHTML = `
                     <div class="flex-1 min-w-0">
-                        <input type="text" value="${node.name}" class="w-full bg-transparent border-0 focus:ring-0 font-semibold text-slate-800 text-[15px] p-0"
+                        <input type="text" value="${node.name}" class="w-full bg-transparent border-0 focus:ring-1 focus:ring-indigo-500 rounded-md font-medium text-slate-800 text-xs px-2 py-1"
                                onchange="updateNodeName(${index}, this.value)">
                     </div>
-                    <input type="color" value="${node.color || '#64748b'}" class="w-9 h-9 p-1 border border-slate-300 rounded-2xl cursor-pointer flex-shrink-0"
-                           onchange="updateNodeColor(${index}, this.value)">
-                    <button onclick="deleteNode(${index})" class="text-red-400 hover:text-red-600 active:text-red-700 p-2 transition-colors flex-shrink-0">
-                        <i class="fa-solid fa-trash text-base"></i>
+                    <div class="relative w-7 h-7 rounded-md border border-slate-200 overflow-hidden flex-shrink-0 shadow-inner">
+                        <input type="color" value="${node.color || '#94a3b8'}" class="absolute scale-[2] top-[-50%] left-[-50%] w-[200%] h-[200%] cursor-pointer border-0"
+                               onchange="updateNodeColor(${index}, this.value)">
+                    </div>
+                    <button onclick="deleteNode(${index})" class="text-slate-400 hover:text-rose-600 p-1.5 transition-colors flex-shrink-0" title="Remove Entry">
+                        <i class="fa-solid fa-circle-xmark text-sm"></i>
                     </button>
                 `;
                 container.appendChild(div);
@@ -209,10 +229,12 @@
         }
 
         function addNode() {
-            if (nodes.length >= 10) { alert("Maximum 10 nodes reached."); return; }
-            const name = prompt("Node name:", `Node ${nodes.length + 1}`);
+            const name = prompt("Enter Node Descriptor Tag:", `Node Target ${nodes.length + 1}`);
             if (!name || !name.trim()) return;
-            nodes.push({ name: name.trim(), color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0') });
+            // Generate professional color palette default values sequentially rather than completely random
+            const defaultColors = ['#475569', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899'];
+            const chosenColor = defaultColors[nodes.length % defaultColors.length];
+            nodes.push({ name: name.trim(), color: chosenColor });
             renderNodes();
             saveToLocalStorage();
             generateDiagram();
@@ -220,7 +242,12 @@
 
         function updateNodeName(index, newName) {
             if (!newName.trim()) return;
+            const oldName = nodes[index].name;
             nodes[index].name = newName.trim();
+            links.forEach(l => {
+                if (l.source === oldName) l.source = nodes[index].name;
+                if (l.target === oldName) l.target = nodes[index].name;
+            });
             saveToLocalStorage();
             updateFlowSelects();
             generateDiagram();
@@ -233,7 +260,6 @@
         }
 
         function deleteNode(index) {
-            if (!confirm(`Delete "${nodes[index].name}"?`)) return;
             const name = nodes[index].name;
             nodes.splice(index, 1);
             links = links.filter(l => l.source !== name && l.target !== name);
@@ -248,31 +274,31 @@
             tbody.innerHTML = '';
 
             if (links.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-slate-400"><i class="fa-solid fa-link text-xl mb-2 block"></i>No flows yet</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-12 text-center text-slate-400 bg-slate-50/30"><i class="fa-solid fa-arrows-split-up-and-left text-xl mb-2 text-slate-300 block"></i>No multi-tier connections specified</td></tr>`;
                 return;
             }
 
             links.forEach((link, index) => {
                 const row = document.createElement('tr');
-                row.className = 'flow-row';
+                row.className = 'interactive-row';
                 row.innerHTML = `
-                    <td class="px-3 py-2.5">
-                        <select class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white" onchange="updateLink(${index}, 'source', this.value)">
+                    <td class="px-3 py-2">
+                        <select class="w-full border border-slate-200 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-700 font-medium" onchange="updateLink(${index}, 'source', this.value)">
                             ${createNodeOptions(link.source)}
                         </select>
                     </td>
-                    <td class="px-3 py-2.5">
-                        <select class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white" onchange="updateLink(${index}, 'target', this.value)">
+                    <td class="px-3 py-2">
+                        <select class="w-full border border-slate-200 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-700 font-medium" onchange="updateLink(${index}, 'target', this.value)">
                             ${createNodeOptions(link.target)}
                         </select>
                     </td>
-                    <td class="px-3 py-2.5">
-                        <input type="number" value="${link.value}" step="any" min="0" class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white"
+                    <td class="px-3 py-2">
+                        <input type="number" value="${link.value}" step="any" min="0" class="w-full border border-slate-200 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs font-mono font-semibold bg-white text-slate-800"
                                onchange="updateLink(${index}, 'value', parseFloat(this.value) || 0)">
                     </td>
-                    <td class="px-2 py-2.5 text-center">
-                        <button onclick="deleteLink(${index})" class="text-red-400 hover:text-red-600 active:text-red-700 p-2 transition-colors">
-                            <i class="fa-solid fa-times text-lg"></i>
+                    <td class="px-2 py-2 text-center">
+                        <button onclick="deleteLink(${index})" class="text-slate-300 hover:text-rose-500 p-1.5 transition-colors">
+                            <i class="fa-solid fa-circle-minus text-sm"></i>
                         </button>
                     </td>
                 `;
@@ -281,7 +307,7 @@
         }
 
         function createNodeOptions(selected) {
-            let html = `<option value="">—</option>`;
+            let html = `<option value="">— Choose Node —</option>`;
             nodes.forEach(n => {
                 html += `<option value="${n.name}" ${n.name === selected ? 'selected' : ''}>${n.name}</option>`;
             });
@@ -291,7 +317,7 @@
         function updateFlowSelects() { renderFlowsTable(); }
 
         function addFlowRow() {
-            if (nodes.length < 2) { alert("Add at least two nodes first."); return; }
+            if (nodes.length < 2) { alert("Configure a minimum of two system elements/nodes before charting distributions."); return; }
             links.push({ source: nodes[0].name, target: nodes[1].name, value: 100 });
             renderFlowsTable();
             saveToLocalStorage();
@@ -311,17 +337,21 @@
             generateDiagram();
         }
 
-        // === CORRECTED: Source + Target colour blending with semi-transparency ===
         function generateDiagram() {
             const container = document.getElementById('sankey-chart');
 
             if (!nodes.length || !links.length) {
-                container.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-slate-400 py-12"><i class="fa-solid fa-chart-area text-5xl mb-4 opacity-40"></i><p class="text-sm">Add nodes and flows to generate your diagram</p></div>`;
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-slate-400 py-16 px-4 text-center">
+                        <i class="fa-solid fa-cubes-stacked text-4xl mb-3 text-slate-200 animate-pulse"></i>
+                        <h4 class="text-slate-700 font-semibold text-sm">Awaiting Pipeline Mapping</h4>
+                        <p class="text-xs text-slate-400 max-w-xs mt-1">Populate organizational nodes and distribution matrices to generate interactive flow visuals.</p>
+                    </div>`;
                 return;
             }
 
             const nodeNames = nodes.map(n => n.name);
-            const nodeColors = nodes.map(n => n.color || '#64748b');
+            const nodeColors = nodes.map(n => n.color || '#94a3b8');
             const nodeIndex = {};
             nodeNames.forEach((name, i) => nodeIndex[name] = i);
 
@@ -331,14 +361,15 @@
                 const sIdx = nodeIndex[link.source];
                 const tIdx = nodeIndex[link.target];
                 if (sIdx !== undefined && tIdx !== undefined && link.value > 0) {
-                    const sourceColor = nodes[sIdx].color || '#64748b';
-                    const targetColor = nodes[tIdx].color || '#64748b';
+                    const sourceColor = nodes[sIdx].color || '#94a3b8';
+                    const targetColor = nodes[tIdx].color || '#94a3b8';
                     
-                    // Blend using START node colour + END node colour + semi-transparency
                     sankeyLinks.source.push(sIdx);
                     sankeyLinks.target.push(tIdx);
                     sankeyLinks.value.push(link.value);
-                    sankeyLinks.color.push(blendColors(sourceColor, targetColor, 0.42));
+                    
+                    // Creates an integrated semi-transparent path blend between intersecting matrices
+                    sankeyLinks.color.push(blendColors(sourceColor, targetColor, 0.38));
                 }
             });
 
@@ -347,25 +378,25 @@
                 orientation: "h",
                 arrangement: "snap",
                 node: {
-                    pad: 22,
-                    thickness: 26,
-                    line: { color: "#e2e8f0", width: 1.5 },
+                    pad: 24,
+                    thickness: 20,
+                    line: { color: "#ffffff", width: 2 },
                     label: nodeNames,
                     color: nodeColors,
-                    hovertemplate: '<b>%{label}</b><extra></extra>'
+                    hovertemplate: '<b>%{label}</b><br>Total Throughput: <b>%{value}</b><extra></extra>'
                 },
                 link: {
                     source: sankeyLinks.source,
                     target: sankeyLinks.target,
                     value: sankeyLinks.value,
                     color: sankeyLinks.color,
-                    hovertemplate: '%{source.label} → %{target.label}<br><b>%{value}</b><extra></extra>'
+                    hovertemplate: '%{source.label} → %{target.label}<br>Transferred Volume: <b>%{value}</b><extra></extra>'
                 }
             }];
 
             const layout = {
-                font: { size: 14, color: '#334155', family: 'Inter, system-ui' },
-                margin: { t: 10, r: 10, b: 10, l: 10 },
+                font: { size: 12, color: '#475569', family: 'Inter, system-ui, sans-serif' },
+                margin: { t: 15, r: 15, b: 15, l: 15 },
                 height: 520,
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent'
@@ -375,13 +406,13 @@
             chartDiv = document.getElementById('sankey-chart');
         }
 
-        // Export functions
+        // Infrastructure Data Pipeline Persistence Methods
         function exportJSON() {
             const data = { version: 1, nodes, links };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `sankey_${new Date().toISOString().slice(0,10)}.json`;
+            a.href = url; a.download = `sankey_model_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
@@ -394,40 +425,41 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.nodes || !data.links) throw new Error("Invalid format");
+                    if (!data.nodes || !data.links) throw new Error("Missing primary data arrays");
                     nodes = data.nodes; links = data.links;
                     renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
-                } catch (err) { alert("Invalid JSON: " + err.message); }
+                } catch (err) { alert("Parsing Exception Encountered: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
         });
 
         function exportSVG() {
-            if (!chartDiv) return alert("Generate the diagram first.");
-            Plotly.downloadImage(chartDiv, { format: 'svg', filename: 'sankey_diagram' });
+            if (!chartDiv) return alert("Initialize allocation mappings prior to asset generation.");
+            Plotly.downloadImage(chartDiv, { format: 'svg', filename: 'sankey_executive_vector' });
         }
 
         function exportPNG() {
-            if (!chartDiv) return alert("Generate the diagram first.");
-            Plotly.toImage(chartDiv, { format: 'png', width: 1600, height: 1000, scale: 3 }).then(url => {
+            if (!chartDiv) return alert("Initialize allocation mappings prior to asset generation.");
+            Plotly.toImage(chartDiv, { format: 'png', width: 2400, height: 1500, scale: 3 }).then(url => {
                 const a = document.createElement('a');
-                a.href = url; a.download = 'sankey_high_res.png';
+                a.href = url; a.download = 'sankey_high_resolution_distribution.png';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
             });
         }
 
         function resetAll() {
-            if (!confirm("Reset all data?")) return;
-            nodes = []; links = []; localStorage.removeItem('sankeyData');
+            if (!confirm("Are you certain you wish to flush current mapping configurations? Data will be unrecoverable.")) return;
+            nodes = []; links = []; 
+            localStorage.removeItem('sankeyWorkspaceData_v2');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }
 
         function loadDefaultExample() {
             nodes = [
-                { name: "Coal", color: "#1e2937" },
-                { name: "Natural Gas", color: "#475569" },
+                { name: "Coal", color: "#475569" },
                 { name: "Oil", color: "#334155" },
+                { name: "Natural Gas", color: "#64748b" },
                 { name: "Renewables", color: "#22c55e" },
                 { name: "Nuclear", color: "#a855f7" },
                 { name: "Electricity", color: "#3b82f6" },
@@ -439,10 +471,10 @@
             links = [
                 { source: "Coal", target: "Electricity", value: 920 },
                 { source: "Coal", target: "Industry", value: 680 },
+                { source: "Oil", target: "Transport", value: 1950 },
+                { source: "Oil", target: "Industry", value: 420 },
                 { source: "Natural Gas", target: "Electricity", value: 780 },
                 { source: "Natural Gas", target: "Industry", value: 510 },
-                { source: "Oil", target: "Electricity", value: 650 },
-                { source: "Oil", target: "Transport", value: 1950 },
                 { source: "Renewables", target: "Electricity", value: 1450 },
                 { source: "Nuclear", target: "Electricity", value: 620 },
                 { source: "Electricity", target: "Industry", value: 980 },
@@ -456,7 +488,7 @@
             generateDiagram();
         }
 
-        function initializeApp() {
+        window.onload = function() {
             loadFromLocalStorage();
             if (nodes.length === 0) {
                 loadDefaultExample();
@@ -465,9 +497,7 @@
                 renderFlowsTable();
                 generateDiagram();
             }
-        }
-
-        window.onload = initializeApp;
+        };
     </script>
 </body>
 </html>

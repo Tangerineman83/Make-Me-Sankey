@@ -28,16 +28,16 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* Presentation Layer Class Overrides */
+        /* Master Presentation Layer Class Overrides */
         .sankey-link {
             fill-opacity: 1.0 !important;
             stroke-opacity: 0.0 !important;
             mix-blend-mode: multiply !important;
-            transition: opacity 0.15s ease;
+            transition: all 0.2s ease;
         }
         .sankey-link:hover {
-            opacity: 0.85 !important;
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12)) !important;
+            opacity: 0.90 !important;
+            filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.18)) !important;
         }
     </style>
 </head>
@@ -56,7 +56,7 @@
                 <p class="text-slate-500 mt-1.5 text-sm">Design crisp, high-resolution flow models instantly onto clean transparent layers.</p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap gap-2">
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
                     <button onclick="importJSON()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Import Model Structure Data File">
                         <i class="fa-solid fa-file-import text-slate-400"></i>
@@ -95,7 +95,7 @@
 
                 <button onclick="resetAll()" class="px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center gap-1.5">
                     <i class="fa-solid fa-trash-can text-xs"></i>
-                    <span>Clear All</span>
+                    <span>Clear</span>
                 </button>
             </div>
         </div>
@@ -185,17 +185,13 @@
         let dragObserver = null;
         let activeGradientsCache = [];
 
-        function generateUUID() {
-            return 'inline-grad-' + Math.random().toString(36).substr(2, 9);
-        }
-
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v12', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v13', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v12');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v13');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
@@ -208,23 +204,10 @@
         function updateCanvasOpacity(value) {
             globalOpacityValue = parseFloat(value) / 100;
             document.getElementById('opacity-slider-readout').innerText = value + '%';
-            
-            const chartContainer = document.getElementById('sankey-chart');
-            const targetSvg = chartContainer.querySelector('svg.main-svg');
-            if (!targetSvg) return;
-
-            const grads = targetSvg.querySelectorAll('defs linearGradient');
-            grads.forEach(grad => {
-                const stops = grad.querySelectorAll('stop');
-                if (stops.length >= 4) {
-                    stops[1].setAttribute('stop-opacity', globalOpacityValue);
-                    stops[2].setAttribute('stop-opacity', globalOpacityValue);
-                }
-            });
+            applyLocalGradients();
             saveToLocalStorage();
         }
 
-        // Actionable layout-only reset method maps directly to view position bounds
         function resetCanvasPosition() {
             if (!chartDiv) return;
             Plotly.relayout(chartDiv, {
@@ -275,7 +258,7 @@
             const name = prompt("Enter Node Name:", `Node ${nodes.length + 1}`);
             if (!name || !name.trim()) return;
             const premiumPalette = ['#1e293b', '#2563eb', '#10b981', '#7c3aed', '#f43f5e', '#d97706', '#0891b2', '#475569'];
-            const chosenColor = premiumPalette[nodes.length % defaultColors.length] || '#475569';
+            const chosenColor = premiumPalette[nodes.length % premiumPalette.length] || '#475569';
             nodes.push({ name: name.trim(), color: chosenColor });
             renderNodes();
             saveToLocalStorage();
@@ -411,7 +394,7 @@
                     sankeyLinks.target.push(tIdx);
                     sankeyLinks.value.push(link.value);
                     
-                    sankeyLinks.color.push('rgba(0,0,0,0.1)'); 
+                    sankeyLinks.color.push('rgba(0,0,0,0.05)'); 
                     activeGradientsCache.push({ sourceColor, targetColor });
                 }
             });
@@ -452,6 +435,7 @@
             chartDiv = document.getElementById('sankey-chart');
         }
 
+        // Applies fluid multi-stop transparency vectors referencing structural index arrays
         function applyLocalGradients() {
             const chartContainer = document.getElementById('sankey-chart');
             const targetSvg = chartContainer.querySelector('svg.main-svg');
@@ -462,7 +446,6 @@
                 localDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
                 targetSvg.insertBefore(localDefs, targetSvg.firstChild);
             } else {
-                // Clear out existing gradients to force color recalculations upon loading new profile files
                 localDefs.innerHTML = '';
             }
 
@@ -472,40 +455,43 @@
                 if (!activeGradientsCache[idx]) return;
                 
                 const { sourceColor, targetColor } = activeGradientsCache[idx];
-                const activeGradId = `drag-grad-${idx}`;
+                const activeGradId = `link-grad-${idx}`;
 
-                const existingGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                existingGrad.setAttribute('id', activeGradId);
-                existingGrad.setAttribute('x1', '0%');
-                existingGrad.setAttribute('y1', '30%'); 
-                existingGrad.setAttribute('x2', '100%');
-                existingGrad.setAttribute('y2', '0%');
+                const linearGradNode = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                linearGradNode.setAttribute('id', activeGradId);
+                linearGradNode.setAttribute('x1', '0%');
+                linearGradNode.setAttribute('y1', '0%'); 
+                linearGradNode.setAttribute('x2', '100%');
+                linearGradNode.setAttribute('y2', '0%');
 
+                // Locked solid start stop tracking boundary intersections cleanly
                 const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
                 stopStart.setAttribute('offset', '0%');
                 stopStart.setAttribute('stop-color', sourceColor);
                 stopStart.setAttribute('stop-opacity', '1.0');
 
+                // Specular cylinder profile adjustments
                 const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopMidLeft.setAttribute('offset', '40%');
+                stopMidLeft.setAttribute('offset', '35%');
                 stopMidLeft.setAttribute('stop-color', sourceColor); 
                 stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
 
                 const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopMidRight.setAttribute('offset', '70%');
+                stopMidRight.setAttribute('offset', '65%');
                 stopMidRight.setAttribute('stop-color', targetColor); 
                 stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
 
+                // Locked solid end stop tracking intermediate junctions cleanly
                 const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
                 stopEnd.setAttribute('offset', '100%');
                 stopEnd.setAttribute('stop-color', targetColor);
                 stopEnd.setAttribute('stop-opacity', '1.0');
 
-                existingGrad.appendChild(stopStart);
-                existingGrad.appendChild(stopMidLeft);
-                existingGrad.appendChild(stopMidRight);
-                existingGrad.appendChild(stopEnd);
-                localDefs.appendChild(existingGrad);
+                linearGradNode.appendChild(stopStart);
+                linearGradNode.appendChild(stopMidLeft);
+                linearGradNode.appendChild(stopMidRight);
+                linearGradNode.appendChild(stopEnd);
+                localDefs.appendChild(linearGradNode);
 
                 path.style.fill = `url(#${activeGradId})`;
                 path.style.stroke = 'none';
@@ -552,12 +538,12 @@
         });
 
         function exportBranding() {
-            if (nodes.length === 0) return alert("Populate target system nodes to export custom profiles.");
+            if (nodes.length === 0) return alert("Populate target system nodes to export profiles.");
             const brandingMap = nodes.map(n => ({ name: n.name, color: n.color }));
             const blob = new Blob([JSON.stringify({ brandingProfile: brandingMap }, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `sankey_corporate_branding.json`;
+            a.href = url; a.download = `sankey_branding.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
@@ -570,7 +556,7 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.brandingProfile) throw new Error("Invalid profile array signature.");
+                    if (!data.brandingProfile) throw new Error("Invalid signature layout array.");
                     
                     data.brandingProfile.forEach(profile => {
                         const targetNode = nodes.find(n => n.name.toLowerCase() === profile.name.toLowerCase());
@@ -578,7 +564,7 @@
                     });
                     
                     renderNodes(); saveToLocalStorage(); generateDiagram();
-                } catch (err) { alert("Branding Profile Load Exception: " + err.message); }
+                } catch (err) { alert("Branding Load Exception: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
         });

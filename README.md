@@ -397,6 +397,111 @@ sharing one flow's data correctly; reverting to identity comparison will
 make any future overlay element get treated as an unrelated ribbon and
 dim incorrectly when its own parent is hovered.
 
+## App chrome (everything outside the diagram itself)
+
+The editor UI — toolbar, node list, flow table, panel headers — deliberately
+shares the diagram's own design language rather than looking like a generic
+admin dashboard wrapped around a nice chart. **This was a real product
+decision made explicit in this session**: the diagram itself (ribbons,
+nodes, labels, headline) is governed entirely by `generateDiagram()` and the
+research-backed tokens described above and was NOT touched in this pass —
+only the surrounding editor chrome changed.
+
+### Shared visual language
+
+A handful of CSS classes (defined near the top of the `<style>` block,
+above the `:root` diagram tokens) are used everywhere outside the SVG:
+
+- `.panel` / `.panel-header` / `.panel-title` / `.panel-subtitle` — every
+  card (Nodes, Flows, Diagram) uses these, so they read as one family
+  rather than three differently-styled boxes.
+- `.btn` with a modifier (`.btn-ghost`, `.btn-primary`, `.btn-danger-ghost`)
+  — one button shape and sizing throughout; only the modifier changes
+  weight/color for primary vs. secondary vs. destructive actions.
+- `.btn-icon` — square icon-only buttons (add node, delete row).
+- `.field-input` / `.field-select` — one input/select treatment, replacing
+  several slightly different border/focus/padding combinations that existed
+  per-panel before.
+- `.pill-toggle-group` / `.pill-toggle-btn` — the segmented-control pattern
+  used for both the Restrained/Branded and Standard/Classic/Modern toggles;
+  previously each toggle group had near-duplicate but not-quite-identical
+  inline styling.
+- `.editor-row` — the hover/layout treatment for each node row, with
+  `.row-delete` opacity-on-hover so the delete button doesn't visually
+  compete with the row's content at rest.
+
+The app background, card backgrounds, borders, and ink color are drawn from
+the same warm palette family as the diagram's own `--sk-canvas`/`--sk-ink`
+tokens (though defined as separate literal hex values in the chrome classes
+rather than reusing the `--sk-*` custom properties directly, since those are
+scoped conceptually to the diagram and exporting the diagram should never
+accidentally pull in app-chrome-only colors).
+
+### Toolbar
+
+Reduced from three visually-boxed button clusters plus a free-floating
+Clear button down to one continuous row, grouped by task with quiet
+dividers: file data (Import / Export data), color branding (Load colors /
+Save colors), then destructive/primary actions (Clear, Export SVG). The
+**Render Layout button was removed** — it was a leftover from an earlier
+architecture; every data mutation path (`addNode`, `updateNodeName`,
+`updateNodeColor`, `deleteNode`, `addFlowRow`, `updateLink`, `deleteLink`,
+both JSON import handlers) already calls `generateDiagram()` directly, so
+the diagram has been auto-updating on every edit for several sessions —
+the button just hadn't been cleaned up. If you ever find yourself wanting
+to re-add a manual "render" step, that almost certainly means an edit path
+was added that forgot to call `generateDiagram()` — fix that path instead.
+
+### Color picker
+
+Replaced the raw native `<input type="color">` (which opens the browser's
+own unconstrained color wheel) with a custom popover (`openColorPicker()` /
+`buildColorPopover()`) following the Microsoft Office picker pattern: a
+fixed set of core hues (`SWATCH_CORE_HUES`) shown as a base row, with
+lighter tints above and darker shades below (`SWATCH_TINTS` / `SWATCH_SHADES`,
+mixed via `mixToward()`/`shadeHue()`), all in one grid. This keeps branding
+choices visually consistent rather than letting colors drift across
+arbitrary RGB values when a few different people edit the same file over
+time. A custom hex input remains underneath the grid for genuine one-off
+brand colors that don't appear in the core set.
+
+The popover is triggered from a `.swatch-trigger` button on each node row
+(`openColorPickerFor`), positioned via `getBoundingClientRect()` near its
+trigger, and closes on outside click (`handleColorPickerOutsideClick`,
+attached via a capturing `mousedown` listener with a `setTimeout(...,0)`
+guard so the same click that opened it doesn't immediately close it). Only
+one popover can be open at a time (`activeColorPicker` module-level
+reference); opening a new one closes any previous one first.
+
+**If you add another place that needs color selection**, reuse
+`openColorPicker(triggerEl, currentColor, onSelect)` rather than building a
+second picker — it's deliberately generic (not hardcoded to node rows) for
+exactly this reason.
+
+### Node rows: inline editing instead of `prompt()`
+
+`addNode()` previously used a native `prompt()` dialog to ask for a name.
+This was replaced with immediate inline creation (a sensible default name
+like "Node 4") followed by auto-focusing and auto-selecting that row's text
+input, so the person can just start typing a real name with no dialog in
+the way. If you change `addNode()`, preserve the auto-focus — it's the
+difference between this feeling instant and feeling like a form.
+
+### Middle-column value chip legibility fix
+
+The small value label drawn directly on middle-column nodes (e.g. "237.6"
+on the Direct/Indirect Channel nodes in the bundled example) previously
+used white text with a dark stroke halo (`paint-order: stroke`) sitting
+directly on the node's fill color. This was confirmed hard to read — the
+halo visually fights the fill text at the small size these chips render
+at. Replaced with a small white pill (`rx="3.5"`, sized by actually
+measuring the value text width so it's never cramped) containing dark
+`var(--sk-ink)` text, which stays legible on every node color including
+the saturated profit/cost accents. This is a presentation-layer change
+inside `generateDiagram()` (the one part of the rendering engine touched
+this session) — the underlying node-value calculation and layout were not
+changed, only how that one piece of text is drawn.
+
 ## Change log (high-level)
 
 - **V1:** Plotly + MutationObserver gradient injection hack. Shipped with
@@ -421,7 +526,7 @@ dim incorrectly when its own parent is hovered.
   tuning collision thresholds. Added the Restrained/Branded palette toggle
   to keep the tool usable for non-financial data while defaulting to the
   research-backed restrained look.
-- **V4 (current):** Fixed a real canvas-sizing bug reported via screenshot
+- **V4:** Fixed a real canvas-sizing bug reported via screenshot
   (diagram not filling the available card space, dead space below it). Root
   cause was NOT the obvious height-formula guess it first appeared to be —
   it was a genuine CSS flexbox issue: a child div with `height:100%` inside
@@ -444,18 +549,47 @@ dim incorrectly when its own parent is hovered.
   toggle (see above) at the same time, including several rendered-and-
   rejected iterations of the brush filter before landing on a version
   confirmed visible at realistic ribbon thickness.
+- **V5 (current):** Scope for this session was explicit: the diagram engine,
+  color/style toggles, and data model were locked — "don't change the
+  output or functionality around the Sankey diagram" — everything else was
+  open for a genuine rethink. Removed the dead Render Layout button after
+  confirming every data-mutation path already auto-renders. Replaced the
+  native `<input type="color">` with a custom Office-style swatch-grid
+  picker (see *Color picker* above) so branding stays consistent across a
+  small set of core hues plus tints/shades instead of arbitrary RGB.
+  Rewrote the middle-column value chip from white-text-with-stroke-halo to
+  a white pill with dark ink text after confirming via rendered screenshot
+  that the halo treatment was genuinely hard to read. Replaced `prompt()`-
+  based node creation with inline auto-focused editing. Did a full visual
+  pass unifying the app chrome (toolbar, panels, buttons, inputs, toggles)
+  into one consistent design language drawn from the diagram's own
+  ink/canvas palette, simplified UI copy throughout (dropped enterprise-
+  software phrasing like "Render Layout" / "Configure a minimum of two
+  nodes" / "Load Custom Corporate Color Profiles" in favor of plain
+  language), and consolidated the canvas header's three separately-boxed
+  control clusters into one coherent settings strip. Verified end-to-end
+  via a real rendered test harness built from the actual extracted
+  `<style>`/`<script>`/body markup (not retyped) including the color
+  picker open/select/close flow, inline rename cascading to flow links,
+  auto-focus on node creation, localStorage round-tripping, and layout at
+  both mobile and desktop widths.
 
 ## If you're picking this up fresh
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
-architecture*, *Ribbon style toggle*, then look at `generateDiagram()`
-itself. Don't reach for a charting library. Don't add a new CSS class
-without updating `getStyledSvgString()`. Don't "fix" label collisions by
-making the check more global without first understanding why it was
-deliberately scoped to edge columns only. Don't trust a CSS sizing fix
-without actually rendering and measuring it — the flexbox bug in V4 looked
-fixed after a plausible-sounding code change and wasn't; it only got
+architecture*, *Ribbon style toggle*, *App chrome*, then look at
+`generateDiagram()` itself. Don't reach for a charting library. Don't add a
+new CSS class without updating `getStyledSvgString()`. Don't "fix" label
+collisions by making the check more global without first understanding why
+it was deliberately scoped to edge columns only. Don't trust a CSS sizing
+fix without actually rendering and measuring it — the flexbox bug in V4
+looked fixed after a plausible-sounding code change and wasn't; it only got
 caught by building an isolated test case and reading real
-`getBoundingClientRect()` output. When in doubt about a design choice, it's
+`getBoundingClientRect()` output. Keep the diagram engine and the app
+chrome conceptually separate — V5 deliberately rewrote everything outside
+`generateDiagram()` while leaving the function itself untouched except for
+the one labeled exception (the value chip text treatment); if a future
+session is asked to touch the UI again, the same boundary likely still
+applies unless told otherwise. When in doubt about a design choice, it's
 probably encoded in this file already — search for it before re-deciding
 it.

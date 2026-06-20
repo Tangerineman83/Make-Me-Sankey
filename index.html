@@ -44,7 +44,7 @@
         }
 
         #sankey-canvas-shell { background: var(--sk-canvas); border-radius: 16px; }
-        #sankey-svg { width: 100%; height: 100%; display: block; }
+        #sankey-svg { width: 100%; height: auto; display: block; }
 
         .sk-ribbon {
             transition: opacity 0.16s ease, filter 0.16s ease;
@@ -112,8 +112,10 @@
             fill: var(--sk-ink-muted);
         }
 
-        #palette-restrained-btn, #palette-branded-btn { color: #64748b; }
-        #palette-restrained-btn.is-active, #palette-branded-btn.is-active {
+        #palette-restrained-btn, #palette-branded-btn,
+        #style-standard-btn, #style-classic-btn, #style-modern-btn { color: #64748b; }
+        #palette-restrained-btn.is-active, #palette-branded-btn.is-active,
+        #style-standard-btn.is-active, #style-classic-btn.is-active, #style-modern-btn.is-active {
             background: #0f172a; color: #fff;
         }
 
@@ -237,6 +239,11 @@
                             <button id="palette-restrained-btn" onclick="setPaletteMode('restrained')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Restrained</button>
                             <button id="palette-branded-btn" onclick="setPaletteMode('branded')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Branded</button>
                         </div>
+                        <div class="flex items-center bg-slate-50 border border-slate-200 rounded-xl p-1">
+                            <button id="style-standard-btn" onclick="setRibbonStyle('standard')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Standard</button>
+                            <button id="style-classic-btn" onclick="setRibbonStyle('classic')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Classic</button>
+                            <button id="style-modern-btn" onclick="setRibbonStyle('modern')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all">Modern</button>
+                        </div>
                         <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
                             <span class="text-xs font-semibold text-slate-500">Flow Fade:</span>
                             <input type="range" id="global-opacity-slider" min="0" max="100" value="45" 
@@ -247,8 +254,8 @@
                     </div>
                 </div>
                 
-                <div id="sankey-canvas-shell" class="flex-1 p-3 flex items-center justify-center min-h-[460px] relative">
-                    <div id="sankey-chart" class="w-full h-full"></div>
+                <div id="sankey-canvas-shell" class="p-3 relative">
+                    <div id="sankey-chart" class="w-full"></div>
                 </div>
             </div>
             
@@ -264,21 +271,23 @@
         let chartDiv = null;
         let globalOpacityValue = 0.45; 
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
+        let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
         let activeGradientsCache = [];
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v14', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode, ribbonStyle })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v14');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v15');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
                     links = data.links || [];
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
+                    ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
                 }
             } catch (e) {}
         }
@@ -294,6 +303,15 @@
             paletteMode = mode === 'branded' ? 'branded' : 'restrained';
             document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
             document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
+            generateDiagram();
+            saveToLocalStorage();
+        }
+
+        function setRibbonStyle(style) {
+            ribbonStyle = ['standard', 'classic', 'modern'].includes(style) ? style : 'standard';
+            document.getElementById('style-standard-btn').classList.toggle('is-active', ribbonStyle === 'standard');
+            document.getElementById('style-classic-btn').classList.toggle('is-active', ribbonStyle === 'classic');
+            document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             generateDiagram();
             saveToLocalStorage();
         }
@@ -604,13 +622,30 @@
             const leftMargin = Math.ceil(widestLeft + 40);
             const rightMargin = Math.ceil(widestRight + 40);
 
+            // W and H both come from the diagram's OWN content needs (available container
+            // width as a starting point, never squeezed below what labels/columns require;
+            // height driven by node count/density) — not from forcing the SVG into whatever
+            // box shape the surrounding card happens to be. The <svg> element itself is set
+            // to width:100% / height:auto (see container.innerHTML below), so it always
+            // renders at its true aspect ratio and the page lays out around that, rather than
+            // letterboxing or squeezing the diagram into a mismatched box. This was the actual
+            // root cause of the "diagram doesn't fill the space" bug: H was previously derived
+            // independently of W with no shared aspect-ratio contract with the container.
             const containerRect = container.getBoundingClientRect();
-            const W = Math.max(containerRect.width || 900, 600);
+            const minPlotWidth = 160; // minimum width the ribbon/column area needs to stay legible
+            const W = Math.max(containerRect.width || 900, leftMargin + rightMargin + minPlotWidth);
             const headlineH = 44;
             const colHeaderH = 22;
             const topPad = headlineH + colHeaderH + 14;
             const bottomPad = 20;
-            const H = Math.max(460, Math.min(740, nodeNames.length * 30 + topPad + bottomPad));
+            // H is purely content-driven (how many nodes need how much vertical room to stay
+            // legible) — it does NOT try to match the container's current height, because the
+            // <svg> is rendered at width:100%/height:auto, so the page's layout follows the
+            // diagram's natural proportions rather than the diagram being squeezed to fit a
+            // pre-existing box. This is what actually fixes "doesn't fill the space": there's
+            // no longer two independently-computed numbers (container height vs content height)
+            // that can disagree and cause letterboxing.
+            const H = Math.max(360, nodeNames.length * 34 + topPad + bottomPad);
             const usableH = H - topPad - bottomPad;
 
             const nodeThickness = 12;
@@ -684,12 +719,65 @@
                     C ${midX} ${r.ty1}, ${midX} ${r.sy1}, ${x0} ${r.sy1} Z`;
             }
 
-            // Flat solid fills at a research-supported resting opacity (~0.4-0.5), lifted
-            // on hover/selection rather than carrying a gradient — the single highest-impact
-            // change from the original Plotly-style multi-hue gradient ribbons.
+            // ---- Ribbon style defs ----
+            // Three deliberately restrained looks, not three different chart types — every
+            // ribbon still carries the same geometry and color logic. The style only changes
+            // how the fill is finished, so switching styles never changes what the diagram says.
+            let ribbonDefs = '';
+            if (ribbonStyle === 'classic') {
+                // Verified by rendering and screenshotting multiple candidates at both swatch
+                // size and realistic on-canvas ribbon thickness (thin ribbons can't carry as
+                // much visible grain as a large test swatch suggests). Two layers: a gentle
+                // edge softness so the boundary loses its perfectly vector crispness, plus a
+                // DIRECTIONAL streak texture (markedly different x/y baseFrequency, so the
+                // noise stretches along the flow's own horizontal axis) — this is what reads
+                // as an actual brush stroke rather than generic noise. An isotropic (same-
+                // frequency-both-axes) grain layer was tried first and was barely visible at
+                // real ribbon thickness; the directional version stayed visible at any width.
+                // A separate highlight-streak variant using a feColorMatrix with a negative
+                // alpha bias was also tried and rejected — it introduced visible color fringing
+                // (the negative coefficient pushed some channels below zero unpredictably).
+                ribbonDefs += `
+                    <filter id="sk-brush-filter" x="-5%" y="-5%" width="110%" height="110%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.05" numOctaves="3" seed="11" result="edgeNoise"/>
+                        <feDisplacementMap in="SourceGraphic" in2="edgeNoise" scale="3.5" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+                        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.35" numOctaves="2" seed="5" result="streaks"/>
+                        <feColorMatrix in="streaks" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.32 0.32 0.32 0 0" result="streaksAlpha"/>
+                        <feComposite in="streaksAlpha" in2="SourceAlpha" operator="in" result="streaksClipped"/>
+                        <feMerge>
+                            <feMergeNode in="displaced"/>
+                            <feMergeNode in="streaksClipped"/>
+                        </feMerge>
+                    </filter>`;
+            } else if (ribbonStyle === 'modern') {
+                // Soft top-edge highlight + gentle drop shadow, suggesting a glossy/lit surface
+                // without literal blur-everything glassmorphism — the ribbon stays a flat,
+                // legible color underneath; the gloss is a thin overlay, not the whole fill.
+                ribbonDefs += `
+                    <filter id="sk-glass-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1c2127" flood-opacity="0.10"/>
+                    </filter>
+                    <linearGradient id="sk-glass-sheen" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.38"/>
+                        <stop offset="35%" stop-color="#ffffff" stop-opacity="0.08"/>
+                        <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+                    </linearGradient>`;
+            }
+            if (ribbonDefs) svg += `<defs>${ribbonDefs}</defs>`;
+
             ribbons.forEach(r => {
                 const x0 = colX[r.sRank], x1 = colX[r.tRank];
-                svg += `<path d="${ribbonPath(x0, x1, r)}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}" class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
+                const d = ribbonPath(x0, x1, r);
+                const filterAttr = ribbonStyle === 'classic' ? ' filter="url(#sk-brush-filter)"' : (ribbonStyle === 'modern' ? ' filter="url(#sk-glass-shadow)"' : '');
+                svg += `<path d="${d}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}"${filterAttr} class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
+                if (ribbonStyle === 'modern') {
+                    // Sheen overlay shares the exact same path so it's perfectly clipped to the
+                    // ribbon's own shape, never spilling onto neighboring flows or nodes. It
+                    // carries the same data-source/data-target so hover highlighting dims it
+                    // in sync with its parent ribbon rather than staying full-opacity over a
+                    // dimmed flow.
+                    svg += `<path d="${d}" fill="url(#sk-glass-sheen)" class="sk-ribbon sk-ribbon-sheen" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}" style="pointer-events:none;"/>`;
+                }
             });
 
             // ---- Nodes ----
@@ -778,10 +866,24 @@
                 headlineText = `${profitNode} is ${formatFlowValue(pct)}% of total throughput`;
                 subheadText = `${formatFlowValue(totalThroughput)} total in \u00b7 ${formatFlowValue(profitValue)} to ${profitNode}`;
             }
-            svg += `<text x="${plotLeft}" y="26" class="sk-headline" font-size="16">${escapeHtml(headlineText)}</text>`;
-            svg += `<text x="${plotLeft}" y="44" class="sk-subhead" font-size="11.5">${escapeHtml(subheadText)}</text>`;
 
-            container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
+            // The headline is plain SVG text with no native wrapping, so on a narrow W it can
+            // run past the viewBox edge and get clipped. Measure it and scale the font size
+            // down (floored at a still-legible minimum) so it always fits the available width,
+            // rather than risk truncation — this is the same "measure before drawing" approach
+            // used for label margins above.
+            const headlineAvailableW = W - plotLeft - 16;
+            let headlineSize = 16;
+            const headlineWidthAt16 = measureTextWidth(headlineText, `600 16px Space Grotesk, Inter, sans-serif`);
+            if (headlineWidthAt16 > headlineAvailableW) {
+                headlineSize = Math.max(11, 16 * (headlineAvailableW / headlineWidthAt16));
+            }
+            const subheadSize = Math.max(9.5, headlineSize * 0.72);
+
+            svg += `<text x="${plotLeft}" y="${headlineSize + 8}" class="sk-headline" font-size="${headlineSize.toFixed(1)}">${escapeHtml(headlineText)}</text>`;
+            svg += `<text x="${plotLeft}" y="${headlineSize + 8 + subheadSize + 6}" class="sk-subhead" font-size="${subheadSize.toFixed(1)}">${escapeHtml(subheadText)}</text>`;
+
+            container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
             chartDiv = container.querySelector('#sankey-svg');
 
             attachLinkHighlighting();
@@ -833,7 +935,8 @@
             });
             ribbonEls.forEach(r => {
                 r.addEventListener('mouseenter', () => {
-                    ribbonEls.forEach(other => other.classList.toggle('is-dimmed', other !== r));
+                    const isSameFlow = (other) => other.dataset.source === r.dataset.source && other.dataset.target === r.dataset.target;
+                    ribbonEls.forEach(other => other.classList.toggle('is-dimmed', !isSameFlow(other)));
                     nodeEls.forEach(n => n.classList.toggle('is-dimmed', n.dataset.name !== r.dataset.source && n.dataset.name !== r.dataset.target));
                     labelEls.forEach(l => l.classList.toggle('is-dimmed', l.dataset.name !== r.dataset.source && l.dataset.name !== r.dataset.target));
                 });
@@ -989,7 +1092,7 @@
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v14');
+            localStorage.removeItem('sankeyWorkspaceData_v15');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }
@@ -1036,6 +1139,9 @@
             document.getElementById('opacity-slider-readout').innerText = slider.value + '%';
             document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
             document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
+            document.getElementById('style-standard-btn').classList.toggle('is-active', ribbonStyle === 'standard');
+            document.getElementById('style-classic-btn').classList.toggle('is-active', ribbonStyle === 'classic');
+            document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             
             if (nodes.length === 0) {
                 loadDefaultExample();

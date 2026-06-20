@@ -10,6 +10,10 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
         
+        :root {
+            --accent: #10b981;
+        }
+        
         body {
             font-family: 'Inter', system_ui, sans-serif;
         }
@@ -17,172 +21,188 @@
         .title-font {
             font-family: 'Space Grotesk', 'Inter', sans-serif;
             font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.05), 
+                       0 4px 6px -4px rgb(15 23 42 / 0.05);
+            border: 1px solid #e2e8f0;
         }
 
         .sankey-container {
-            min-height: 520px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05);
+            background: #f8fafc;
+            border-radius: 16px;
+            box-shadow: inset 0 2px 4px 0 rgb(15 23 42 / 0.03);
         }
 
-        .node-row:hover {
+        .modern-table {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+
+        .flow-row {
+            transition: background-color 0.1s ease;
+        }
+        
+        .flow-row:hover {
             background-color: #f8fafc;
         }
 
-        .flow-table th {
-            font-weight: 600;
-            color: #475569;
+        .node-item {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .node-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgb(15 23 42 / 0.1);
         }
 
-        .plotly-graph-div {
-            border-radius: 12px;
+        .sankey-wrapper {
+            box-shadow: 0 20px 25px -5px rgb(15 23 42 / 0.05), 
+                       0 8px 10px -6px rgb(15 23 42 / 0.05);
         }
     </style>
 </head>
-<body class="bg-slate-50">
-    <div class="max-w-[1400px] mx-auto p-6">
+<body class="bg-slate-100">
+    <div class="max-w-[1280px] mx-auto px-4 py-6 sm:px-6">
+        
         <!-- Header -->
-        <div class="flex items-center justify-between mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div>
-                <h1 class="text-4xl font-semibold title-font text-slate-900">Make Me Sankey!</h1>
-                <p class="text-slate-600 mt-1">Create beautiful, high-resolution Sankey diagrams in seconds</p>
+                <h1 class="text-4xl sm:text-5xl font-semibold title-font text-slate-900 tracking-tighter">Make Me Sankey!</h1>
+                <p class="text-slate-600 mt-1 text-lg">Beautiful, high-resolution Sankey diagrams — instantly</p>
             </div>
             
-            <div class="flex items-center gap-3">
-                <!-- Data Management -->
-                <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-2">
+                <!-- Data -->
+                <div class="flex bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
                     <button onclick="importJSON()" 
-                            class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+                            class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
                         <i class="fa-solid fa-upload"></i>
-                        <span>Import JSON</span>
+                        <span class="hidden sm:inline">Import</span>
                     </button>
                     <button onclick="exportJSON()" 
-                            class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+                            class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
                         <i class="fa-solid fa-download"></i>
-                        <span>Export JSON</span>
+                        <span class="hidden sm:inline">Export JSON</span>
                     </button>
                 </div>
 
-                <!-- Diagram Actions -->
-                <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+                <!-- Diagram -->
+                <div class="flex bg-white rounded-2xl shadow-sm border border-slate-200 p-1">
                     <button onclick="generateDiagram()" 
-                            class="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-all active:scale-[0.985]">
-                        <i class="fa-solid fa-sync-alt mr-1.5"></i>
-                        <span>Generate Diagram</span>
+                            class="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl transition-all shadow-sm">
+                        <i class="fa-solid fa-sync-alt"></i>
+                        <span>Generate</span>
                     </button>
                     
                     <button onclick="exportSVG()" 
-                            class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors ml-1">
+                            class="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
                         <i class="fa-solid fa-file-export"></i>
-                        <span>SVG</span>
                     </button>
                     
                     <button onclick="exportPNG()" 
-                            class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+                            class="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-all">
                         <i class="fa-solid fa-image"></i>
-                        <span>PNG (High Res)</span>
                     </button>
                 </div>
 
                 <button onclick="resetAll()" 
-                        class="px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-trash"></i>
-                    <span>Reset</span>
+                        class="px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 active:bg-red-100 rounded-2xl border border-red-200 transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-undo"></i>
+                    <span class="hidden sm:inline">Reset</span>
                 </button>
             </div>
         </div>
 
+        <!-- Main Content - Responsive Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            <!-- Nodes Panel -->
-            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <!-- Nodes -->
+            <div class="lg:col-span-3 section-card p-5">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h2 class="font-semibold text-lg text-slate-800">Nodes</h2>
-                        <p class="text-xs text-slate-500">Max 10 nodes</p>
+                        <h2 class="font-semibold text-xl text-slate-800">Nodes</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Max 10 • Tap to edit</p>
                     </div>
                     <button onclick="addNode()" 
-                            class="flex items-center gap-2 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                        <span>Add</span>
+                            class="flex items-center justify-center w-9 h-9 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-2xl transition-all shadow-sm">
+                        <i class="fa-solid fa-plus"></i>
                     </button>
                 </div>
                 
-                <div id="nodes-list" class="space-y-2 max-h-[420px] overflow-auto pr-1">
-                    <!-- Populated by JavaScript -->
+                <div id="nodes-list" class="space-y-2 max-h-[380px] overflow-auto pr-1">
+                    <!-- Populated by JS -->
                 </div>
             </div>
 
-            <!-- Flows Table -->
-            <div class="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col">
+            <!-- Flows -->
+            <div class="lg:col-span-5 section-card p-5 flex flex-col">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h2 class="font-semibold text-lg text-slate-800">Flows / Links</h2>
-                        <p class="text-xs text-slate-500">Up to ~20 links per node recommended</p>
+                        <h2 class="font-semibold text-xl text-slate-800">Flows</h2>
+                        <p class="text-xs text-slate-500">Up to ~20 per node</p>
                     </div>
                     <button onclick="addFlowRow()" 
-                            class="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium transition-colors">
+                            class="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black active:bg-slate-950 text-white text-sm font-semibold rounded-2xl transition-all">
                         <i class="fa-solid fa-plus text-xs"></i>
-                        <span>Add Flow</span>
+                        <span class="hidden sm:inline">Add Flow</span>
                     </button>
                 </div>
                 
-                <div class="flex-1 overflow-auto border border-slate-200 rounded-xl">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 sticky top-0">
+                <div class="flex-1 overflow-auto modern-table">
+                    <table class="w-full text-sm min-w-[520px]">
+                        <thead class="bg-slate-50 sticky top-0 z-10">
                             <tr>
-                                <th class="px-4 py-3 text-left font-medium text-slate-600 w-2/5">Source</th>
-                                <th class="px-4 py-3 text-left font-medium text-slate-600 w-2/5">Target</th>
-                                <th class="px-4 py-3 text-left font-medium text-slate-600 w-1/5">Value</th>
+                                <th class="px-4 py-3 text-left font-semibold text-slate-600">Source</th>
+                                <th class="px-4 py-3 text-left font-semibold text-slate-600">Target</th>
+                                <th class="px-4 py-3 text-left font-semibold text-slate-600 w-24">Value</th>
                                 <th class="w-10"></th>
                             </tr>
                         </thead>
                         <tbody id="flows-table-body" class="divide-y divide-slate-100">
-                            <!-- Populated dynamically by JS -->
+                            <!-- Populated by JS -->
                         </tbody>
                     </table>
                 </div>
-                
-                <div class="mt-3 text-xs text-slate-500 flex items-center gap-2">
-                    <i class="fa-solid fa-info-circle"></i>
-                    <span>Changes are saved automatically. Click <strong>Generate Diagram</strong> to refresh.</span>
-                </div>
             </div>
 
-            <!-- Sankey Preview -->
-            <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col">
+            <!-- Sankey Diagram -->
+            <div class="lg:col-span-4 section-card p-5 flex flex-col">
                 <div class="flex items-center justify-between mb-3">
-                    <h2 class="font-semibold text-lg text-slate-800">Sankey Diagram</h2>
+                    <h2 class="font-semibold text-xl text-slate-800">Sankey Diagram</h2>
                     <button onclick="generateDiagram()" 
-                            class="text-xs px-3 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-lg font-medium flex items-center gap-1.5 transition-colors">
+                            class="text-xs px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 rounded-xl font-medium flex items-center gap-1.5 transition-colors">
                         <i class="fa-solid fa-sync-alt text-xs"></i>
                         <span>Refresh</span>
                     </button>
                 </div>
                 
-                <div id="sankey-container" 
-                     class="sankey-container flex-1 flex items-center justify-center border border-slate-100 rounded-xl overflow-hidden">
-                    <div id="sankey-chart" class="w-full h-full"></div>
+                <div class="sankey-container flex-1 p-3 rounded-2xl border border-slate-100 sankey-wrapper">
+                    <div id="sankey-chart" class="w-full h-full min-h-[420px]"></div>
                 </div>
                 
                 <div class="mt-3 text-center">
-                    <p class="text-xs text-slate-500">Hover links for details • Export using buttons above</p>
+                    <p class="text-xs text-slate-500">Color-blended flows • Hover for details</p>
                 </div>
             </div>
             
         </div>
     </div>
 
-    <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="handleJSONImport(event)">
+    <input type="file" id="json-file-input" accept=".json" class="hidden">
 
     <script>
-        // Tailwind script
-        function initializeTailwind() {
-            document.documentElement.style.setProperty('--accent', '#10b981');
+        // Tailwind
+        function initTailwind() {
+            // Already handled via CDN
         }
 
-        // Data storage
         let nodes = [];
         let links = [];
         let chartDiv = null;
@@ -204,37 +224,56 @@
             } catch (e) {}
         }
 
-        // Render nodes list
+        // Color blending helper
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 100, g: 116, b: 139 };
+        }
+
+        function blendColors(hex1, hex2, alpha = 0.38) {
+            const rgb1 = hexToRgb(hex1);
+            const rgb2 = hexToRgb(hex2);
+            const r = Math.round((rgb1.r + rgb2.r) / 2);
+            const g = Math.round((rgb1.g + rgb2.g) / 2);
+            const b = Math.round((rgb1.b + rgb2.b) / 2);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        // Render nodes
         function renderNodes() {
             const container = document.getElementById('nodes-list');
             container.innerHTML = '';
 
             if (nodes.length === 0) {
                 const empty = document.createElement('div');
-                empty.className = 'text-center py-8 text-slate-400 text-sm';
-                empty.innerHTML = `<i class="fa-solid fa-info-circle mr-2"></i> No nodes yet. Click "Add" above.`;
+                empty.className = 'text-center py-10 text-slate-400';
+                empty.innerHTML = `<i class="fa-solid fa-info-circle text-2xl mb-2 block"></i> Add your first node`;
                 container.appendChild(empty);
                 return;
             }
 
             nodes.forEach((node, index) => {
                 const div = document.createElement('div');
-                div.className = `flex items-center gap-3 p-3 rounded-xl border border-slate-200 node-row`;
+                div.className = `node-item flex items-center gap-3 p-3.5 bg-white border border-slate-200 rounded-2xl`;
                 
                 div.innerHTML = `
                     <div class="flex-1 min-w-0">
                         <input type="text" value="${node.name}" 
-                               class="w-full bg-transparent border-0 focus:ring-0 font-medium text-slate-800 p-0 text-sm"
+                               class="w-full bg-transparent border-0 focus:ring-0 font-semibold text-slate-800 text-[15px] p-0"
                                onchange="updateNodeName(${index}, this.value)">
                     </div>
                     
                     <input type="color" value="${node.color || '#64748b'}" 
-                           class="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
+                           class="w-9 h-9 p-1 border border-slate-300 rounded-2xl cursor-pointer flex-shrink-0"
                            onchange="updateNodeColor(${index}, this.value)">
                     
                     <button onclick="deleteNode(${index})" 
-                            class="text-red-400 hover:text-red-600 p-1 transition-colors">
-                        <i class="fa-solid fa-trash text-sm"></i>
+                            class="text-red-400 hover:text-red-600 active:text-red-700 p-2 transition-colors flex-shrink-0">
+                        <i class="fa-solid fa-trash text-base"></i>
                     </button>
                 `;
                 container.appendChild(div);
@@ -245,11 +284,11 @@
 
         function addNode() {
             if (nodes.length >= 10) {
-                alert("Maximum 10 nodes allowed.");
+                alert("Maximum 10 nodes reached.");
                 return;
             }
-            const name = prompt("Enter node name:", `Node ${nodes.length + 1}`);
-            if (!name) return;
+            const name = prompt("Node name:", `Node ${nodes.length + 1}`);
+            if (!name || !name.trim()) return;
             
             nodes.push({
                 name: name.trim(),
@@ -258,7 +297,7 @@
             
             renderNodes();
             saveToLocalStorage();
-            generateDiagram(); // auto refresh
+            generateDiagram();
         }
 
         function updateNodeName(index, newName) {
@@ -276,14 +315,10 @@
         }
 
         function deleteNode(index) {
-            if (!confirm(`Delete node "${nodes[index].name}"?`)) return;
-            
-            const nodeName = nodes[index].name;
+            if (!confirm(`Delete "${nodes[index].name}"?`)) return;
+            const name = nodes[index].name;
             nodes.splice(index, 1);
-            
-            // Remove links involving this node
-            links = links.filter(link => link.source !== nodeName && link.target !== nodeName);
-            
+            links = links.filter(l => l.source !== name && l.target !== name);
             renderNodes();
             renderFlowsTable();
             saveToLocalStorage();
@@ -298,8 +333,9 @@
             if (links.length === 0) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td colspan="4" class="px-4 py-8 text-center text-slate-400 text-sm">
-                        No flows yet. Click "Add Flow" above.
+                    <td colspan="4" class="px-4 py-10 text-center text-slate-400">
+                        <i class="fa-solid fa-link text-xl mb-2 block"></i>
+                        No flows yet
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -308,30 +344,30 @@
 
             links.forEach((link, index) => {
                 const row = document.createElement('tr');
-                row.className = 'hover:bg-slate-50';
+                row.className = 'flow-row';
                 
                 row.innerHTML = `
-                    <td class="px-2 py-2">
-                        <select class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-400" 
+                    <td class="px-3 py-2.5">
+                        <select class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white" 
                                 onchange="updateLink(${index}, 'source', this.value)">
                             ${createNodeOptions(link.source)}
                         </select>
                     </td>
-                    <td class="px-2 py-2">
-                        <select class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-400" 
+                    <td class="px-3 py-2.5">
+                        <select class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white" 
                                 onchange="updateLink(${index}, 'target', this.value)">
                             ${createNodeOptions(link.target)}
                         </select>
                     </td>
-                    <td class="px-2 py-2">
+                    <td class="px-3 py-2.5">
                         <input type="number" value="${link.value}" step="any" min="0"
-                               class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-400"
+                               class="w-full border border-slate-300 focus:border-emerald-400 rounded-xl px-3 py-2 text-sm bg-white"
                                onchange="updateLink(${index}, 'value', parseFloat(this.value) || 0)">
                     </td>
-                    <td class="px-2 py-2 text-center">
+                    <td class="px-2 py-2.5 text-center">
                         <button onclick="deleteLink(${index})" 
-                                class="text-red-400 hover:text-red-600 p-1">
-                            <i class="fa-solid fa-times"></i>
+                                class="text-red-400 hover:text-red-600 active:text-red-700 p-2 transition-colors">
+                            <i class="fa-solid fa-times text-lg"></i>
                         </button>
                     </td>
                 `;
@@ -339,32 +375,29 @@
             });
         }
 
-        function createNodeOptions(selectedValue) {
-            let options = `<option value="">Select...</option>`;
-            nodes.forEach(node => {
-                const selected = node.name === selectedValue ? 'selected' : '';
-                options += `<option value="${node.name}" ${selected}>${node.name}</option>`;
+        function createNodeOptions(selected) {
+            let html = `<option value="">—</option>`;
+            nodes.forEach(n => {
+                const sel = n.name === selected ? 'selected' : '';
+                html += `<option value="${n.name}" ${sel}>${n.name}</option>`;
             });
-            return options;
+            return html;
         }
 
         function updateFlowSelects() {
-            // Re-render the entire table so selects are updated
             renderFlowsTable();
         }
 
         function addFlowRow() {
             if (nodes.length < 2) {
-                alert("Please add at least 2 nodes first.");
+                alert("Add at least two nodes first.");
                 return;
             }
-            
             links.push({
                 source: nodes[0].name,
-                target: nodes[1].name,
+                target: nodes[Math.min(1, nodes.length-1)].name,
                 value: 100
             });
-            
             renderFlowsTable();
             saveToLocalStorage();
             generateDiagram();
@@ -373,7 +406,6 @@
         function updateLink(index, field, value) {
             links[index][field] = value;
             saveToLocalStorage();
-            // Auto-refresh diagram on change (debounced in real use, here direct for simplicity)
             generateDiagram();
         }
 
@@ -384,13 +416,15 @@
             generateDiagram();
         }
 
-        // Generate Sankey using Plotly
+        // Main Sankey generator with color blending
         function generateDiagram() {
+            const container = document.getElementById('sankey-chart');
+            
             if (!nodes.length || !links.length) {
-                document.getElementById('sankey-chart').innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-full text-slate-400">
-                        <i class="fa-solid fa-chart-area text-4xl mb-3"></i>
-                        <p class="text-sm">Add nodes and flows to see the diagram</p>
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-slate-400 py-12">
+                        <i class="fa-solid fa-chart-area text-5xl mb-4 opacity-40"></i>
+                        <p class="text-sm">Add nodes and flows to generate your diagram</p>
                     </div>
                 `;
                 return;
@@ -398,80 +432,68 @@
 
             const nodeNames = nodes.map(n => n.name);
             const nodeColors = nodes.map(n => n.color || '#64748b');
-
-            // Create index map
             const nodeIndex = {};
             nodeNames.forEach((name, i) => nodeIndex[name] = i);
 
-            const sankeyLinks = {
-                source: [],
-                target: [],
-                value: [],
-                color: []
-            };
+            const sankeyLinks = { source: [], target: [], value: [], color: [] };
 
             links.forEach(link => {
-                const sourceIdx = nodeIndex[link.source];
-                const targetIdx = nodeIndex[link.target];
-                
-                if (sourceIdx !== undefined && targetIdx !== undefined && link.value > 0) {
-                    sankeyLinks.source.push(sourceIdx);
-                    sankeyLinks.target.push(targetIdx);
+                const sIdx = nodeIndex[link.source];
+                const tIdx = nodeIndex[link.target];
+                if (sIdx !== undefined && tIdx !== undefined && link.value > 0) {
+                    const sourceColor = nodes[sIdx].color || '#64748b';
+                    const targetColor = nodes[tIdx].color || '#64748b';
+                    
+                    sankeyLinks.source.push(sIdx);
+                    sankeyLinks.target.push(tIdx);
                     sankeyLinks.value.push(link.value);
-                    sankeyLinks.color.push('rgba(148, 163, 184, 0.35)');
+                    sankeyLinks.color.push(blendColors(sourceColor, targetColor, 0.38));
                 }
             });
 
             const data = [{
                 type: "sankey",
                 orientation: "h",
+                arrangement: "snap",
                 node: {
-                    pad: 18,
-                    thickness: 22,
-                    line: { color: "#e2e8f0", width: 1 },
+                    pad: 22,
+                    thickness: 26,
+                    line: { color: "#e2e8f0", width: 1.5 },
                     label: nodeNames,
                     color: nodeColors,
-                    hovertemplate: '%{label}<extra></extra>'
+                    hovertemplate: '<b>%{label}</b><extra></extra>'
                 },
                 link: {
                     source: sankeyLinks.source,
                     target: sankeyLinks.target,
                     value: sankeyLinks.value,
                     color: sankeyLinks.color,
-                    hovertemplate: '%{source.label} → %{target.label}<br>Value: %{value}<extra></extra>'
+                    hovertemplate: '%{source.label} → %{target.label}<br><b>%{value}</b><extra></extra>'
                 }
             }];
 
             const layout = {
-                font: { size: 13, color: '#334155' },
-                margin: { t: 20, r: 20, b: 20, l: 20 },
+                font: { size: 14, color: '#334155', family: 'Inter, system-ui' },
+                margin: { t: 10, r: 10, b: 10, l: 10 },
                 height: 520,
-                paper_bgcolor: 'white',
-                plot_bgcolor: 'white'
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent'
             };
 
-            const config = {
-                responsive: true,
-                displayModeBar: false
-            };
+            const config = { responsive: true, displayModeBar: false };
 
             Plotly.react('sankey-chart', data, layout, config);
             chartDiv = document.getElementById('sankey-chart');
         }
 
-        // Export functions
+        // Export functions (unchanged but polished)
         function exportJSON() {
-            const data = {
-                version: 1,
-                nodes: nodes,
-                links: links
-            };
-            
+            const data = { version: 1, nodes, links };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'sankey_data.json';
+            a.download = `sankey_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -482,59 +504,44 @@
             document.getElementById('json-file-input').click();
         }
 
-        function handleJSONImport(event) {
-            const file = event.target.files[0];
+        document.getElementById('json-file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = function(ev) {
                 try {
-                    const data = JSON.parse(e.target.result);
-                    
-                    if (!data.nodes || !Array.isArray(data.nodes) || !data.links || !Array.isArray(data.links)) {
-                        throw new Error("Invalid JSON structure");
-                    }
-
+                    const data = JSON.parse(ev.target.result);
+                    if (!data.nodes || !data.links) throw new Error("Invalid format");
                     nodes = data.nodes;
                     links = data.links;
-                    
                     renderNodes();
                     renderFlowsTable();
                     saveToLocalStorage();
                     generateDiagram();
-                    
-                    alert("JSON imported successfully!");
                 } catch (err) {
-                    alert("Error importing JSON: " + err.message);
+                    alert("Invalid JSON file: " + err.message);
                 }
             };
             reader.readAsText(file);
-            event.target.value = ''; // reset input
-        }
+            e.target.value = '';
+        });
 
         function exportSVG() {
-            if (!chartDiv) {
-                alert("Please generate the diagram first.");
-                return;
-            }
+            if (!chartDiv) return alert("Generate the diagram first.");
             Plotly.downloadImage(chartDiv, { format: 'svg', filename: 'sankey_diagram' });
         }
 
         function exportPNG() {
-            if (!chartDiv) {
-                alert("Please generate the diagram first.");
-                return;
-            }
-            // High resolution export (scale 3 = ~3x resolution)
+            if (!chartDiv) return alert("Generate the diagram first.");
             Plotly.toImage(chartDiv, {
                 format: 'png',
-                width: 1400,
-                height: 900,
+                width: 1600,
+                height: 1000,
                 scale: 3
-            }).then(function(url) {
+            }).then(url => {
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'sankey_diagram_high_res.png';
+                a.download = 'sankey_high_res.png';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -542,7 +549,7 @@
         }
 
         function resetAll() {
-            if (!confirm("Reset everything? This cannot be undone.")) return;
+            if (!confirm("Reset all data?")) return;
             nodes = [];
             links = [];
             localStorage.removeItem('sankeyData');
@@ -551,9 +558,7 @@
             document.getElementById('sankey-chart').innerHTML = '';
         }
 
-        // Load default example
         function loadDefaultExample() {
-            // Global Energy Flows (Illustrative 2025)
             nodes = [
                 { name: "Coal", color: "#475569" },
                 { name: "Oil", color: "#334155" },
@@ -578,7 +583,6 @@
                 { source: "Electricity", target: "Industry", value: 980 },
                 { source: "Electricity", target: "Buildings", value: 720 },
                 { source: "Electricity", target: "Transport", value: 310 },
-                { source: "Industry", target: "Buildings", value: 180 },
                 { source: "Renewables", target: "Buildings", value: 290 }
             ];
 
@@ -587,9 +591,8 @@
             generateDiagram();
         }
 
-        // Initialize everything
         function initializeApp() {
-            initializeTailwind();
+            initTailwind();
             chartDiv = document.getElementById('sankey-chart');
             
             loadFromLocalStorage();
@@ -601,12 +604,8 @@
                 renderFlowsTable();
                 generateDiagram();
             }
-
-            // Keyboard shortcut hint
-            console.log('%c[Make Me Sankey] Tip: Press Ctrl/Cmd + S to export JSON', 'color:#64748b');
         }
 
-        // Boot the app
         window.onload = initializeApp;
     </script>
 </body>

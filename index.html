@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Make Me Sankey!</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
         
         body { font-family: 'Inter', system_ui, sans-serif; }
         .title-font { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+        .mono-num { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -28,62 +28,69 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* Dark presentation canvas: near-black ground with a soft radial vignette so the
-           flows feel like they're lit from within rather than floating on flat black. */
-        .dark-canvas-shell {
-            background:
-                radial-gradient(ellipse 90% 70% at 50% 8%, rgba(99, 102, 241, 0.10), transparent 60%),
-                linear-gradient(180deg, #0b0e16 0%, #06070b 100%);
+        /* ---- Hand-authored Sankey SVG: presentation layer ---- */
+        #sankey-svg { width: 100%; height: 100%; display: block; }
+
+        .sk-ribbon {
+            transition: opacity 0.16s ease, filter 0.16s ease;
+            cursor: pointer;
         }
-        .dark-canvas-vignette {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            box-shadow: inset 0 0 120px 40px rgba(0,0,0,0.55);
-            border-radius: inherit;
+        .sk-ribbon:hover {
+            filter: brightness(1.08);
+        }
+        .sk-ribbon.is-dimmed {
+            opacity: 0.07 !important;
         }
 
-        /* Master Presentation Layer Class Overrides */
-        .sankey-link {
-            fill-opacity: 0.88 !important;
-            stroke-opacity: 0.0 !important;
-            transition: fill-opacity 0.2s ease, filter 0.2s ease;
+        .sk-node {
+            cursor: pointer;
+            transition: filter 0.16s ease, opacity 0.16s ease;
         }
-        .sankey-link:hover {
-            fill-opacity: 1.0 !important;
-            filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.18)) !important;
+        .sk-node:hover {
+            filter: brightness(1.1);
         }
-        .sankey-link.is-dimmed {
-            fill-opacity: 0.08 !important;
+        .sk-node.is-dimmed {
+            opacity: 0.3;
         }
-
-        .sankey-node-rect {
-            transition: filter 0.2s ease;
-        }
-        .sankey-node-rect:hover {
-            filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
+        .sk-node.is-selected {
+            stroke: #0f172a;
+            stroke-width: 1.5px;
         }
 
-        .sankey-leader {
-            stroke: rgba(255, 255, 255, 0.18);
+        .sk-leader {
+            stroke: #cbd5e1;
             stroke-width: 1px;
         }
-        .sankey-label-text {
+
+        .sk-label-name {
             font-family: 'Inter', system-ui, sans-serif;
             font-weight: 600;
-            font-size: 13px;
-            fill: #f1f5f9;
-            letter-spacing: -0.01em;
+            font-size: 12.5px;
+            fill: #1e293b;
+            letter-spacing: -0.006em;
+            cursor: pointer;
+            transition: opacity 0.16s ease;
         }
-        .sankey-label-value {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-weight: 500;
-            font-variant-numeric: tabular-nums;
-            fill: #64748b;
+        .sk-label-value {
+            font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+            font-weight: 600;
+            font-size: 11.5px;
+            fill: #0f172a;
+        }
+        .sk-label.is-dimmed .sk-label-name { opacity: 0.32; }
+        .sk-label.is-dimmed .sk-label-value { opacity: 0.32; }
+
+        .sk-col-header {
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            fill: #94a3b8;
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .sankey-link, .sankey-node-rect { transition: none !important; }
+            .sk-ribbon, .sk-node, .sk-label-name { transition: none !important; }
         }
     </style>
 </head>
@@ -131,11 +138,9 @@
                         <span>Render Layout</span>
                     </button>
                     <div class="w-[1px] h-6 bg-slate-200 mx-1"></div>
-                    <button onclick="exportSVG()" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-all" title="Export Vector SVG">
-                        <i class="fa-solid fa-vector-square"></i>
-                    </button>
-                    <button onclick="exportPNG()" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-all" title="Export Ultra-High-Res PNG">
-                        <i class="fa-solid fa-image"></i>
+                    <button onclick="exportSVG()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Export Vector SVG, transparent background">
+                        <i class="fa-solid fa-vector-square text-slate-400"></i>
+                        <span>Export SVG</span>
                     </button>
                 </div>
 
@@ -195,7 +200,7 @@
                 <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                     <div>
                         <h2 class="font-bold text-base text-slate-800 tracking-tight">Sankey Output Canvas</h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Luminous flows, presentation-ready</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Crisp gradient flows, ready to present</p>
                     </div>
                     
                     <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
@@ -207,14 +212,8 @@
                     </div>
                 </div>
                 
-                <div class="dark-canvas-shell flex-1 p-2 rounded-2xl flex items-center justify-center min-h-[460px] relative overflow-hidden">
-                    <div class="dark-canvas-vignette"></div>
-                    <div id="sankey-chart" class="w-full h-full relative z-10"></div>
-                    
-                    <button onclick="resetCanvasPosition()" class="absolute bottom-4 right-4 z-20 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white border border-white/10 rounded-xl shadow-sm text-xs font-medium flex items-center gap-1.5 transition-all backdrop-blur-sm">
-                        <i class="fa-solid fa-compress"></i>
-                        <span>Reset Position</span>
-                    </button>
+                <div class="flex-1 bg-transparent p-2 rounded-xl border border-dashed border-slate-200 flex items-center justify-center min-h-[460px] relative">
+                    <div id="sankey-chart" class="w-full h-full"></div>
                 </div>
             </div>
             
@@ -229,7 +228,6 @@
         let links = [];
         let chartDiv = null;
         let globalOpacityValue = 0.40; 
-        let dragObserver = null;
         let activeGradientsCache = [];
 
         function saveToLocalStorage() {
@@ -251,21 +249,8 @@
         function updateCanvasOpacity(value) {
             globalOpacityValue = parseFloat(value) / 100;
             document.getElementById('opacity-slider-readout').innerText = value + '%';
-            applyLocalGradients();
+            generateDiagram();
             saveToLocalStorage();
-        }
-
-        function resetCanvasPosition() {
-            if (!chartDiv) return;
-            Plotly.relayout(chartDiv, {
-                'node.x': null,
-                'node.y': null
-            }).then(() => {
-                stripNativeLabels();
-                applyLocalGradients();
-                drawValueLabels();
-                attachLinkHighlighting();
-            });
         }
 
         function renderNodes() {
@@ -413,7 +398,16 @@
         }
 
         // Measures text width using an offscreen canvas so we can size layout margins
-        // BEFORE Plotly renders, instead of discovering labels don't fit after the fact.
+        // BEFORE layout runs, instead of discovering labels don't fit after the fact.
+        // ============================================================
+        // Hand-authored Sankey rendering engine.
+        // No charting library: every node, ribbon, and label is computed
+        // and drawn directly as SVG, following the same approach as a
+        // hand-built editorial chart — manual bezier ribbons, two-pass
+        // proportional node sizing, and labels placed in dedicated
+        // margin space rather than fighting the flow paths for room.
+        // ============================================================
+
         let measureCtx = null;
         function measureTextWidth(text, font) {
             if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
@@ -421,9 +415,70 @@
             return measureCtx.measureText(text).width;
         }
 
+        function formatFlowValue(v) {
+            if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            return v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+        }
+
+        // Assigns each node to a column (rank) by longest-path-from-source, so the
+        // diagram reads left-to-right in true topological order regardless of the
+        // order nodes/links were entered in. A node with no inflow is rank 0; every
+        // other node's rank is one more than the maximum rank of its predecessors.
+        // Falls back gracefully (rank 0) on cyclic input rather than infinite-looping.
+        function assignColumns(nodeNames, validLinks) {
+            const rank = {};
+            nodeNames.forEach(n => rank[n] = 0);
+            const incoming = {};
+            nodeNames.forEach(n => incoming[n] = []);
+            validLinks.forEach(l => incoming[l.target] && incoming[l.target].push(l.source));
+
+            let changed = true;
+            let iterations = 0;
+            const maxIterations = nodeNames.length + 2;
+            while (changed && iterations < maxIterations) {
+                changed = false;
+                iterations++;
+                for (const n of nodeNames) {
+                    const preds = incoming[n];
+                    if (!preds.length) continue;
+                    const maxPredRank = Math.max(...preds.map(p => rank[p] !== undefined ? rank[p] : 0));
+                    if (maxPredRank + 1 > rank[n]) {
+                        rank[n] = maxPredRank + 1;
+                        changed = true;
+                    }
+                }
+            }
+            return rank;
+        }
+
+        // Two-pass proportional height sizing (technique: give every node its
+        // proportional share of the column's available height, floored at a
+        // minimum so thin flows stay visible/legible; if that floor pushes the
+        // total past what's available, scale every node down by the same factor
+        // so the column never overflows its own track).
+        function layoutColumn(colNodes, usableH, topPad, gap) {
+            const total = colNodes.reduce((sum, n) => sum + n.value, 0) || 1;
+            const totalGap = gap * Math.max(colNodes.length - 1, 0);
+            const available = Math.max(usableH - totalGap, 0);
+
+            const MIN_NODE_H = 6;
+            const rawHeights = colNodes.map(n => n.value > 0 ? Math.max((n.value / total) * available, MIN_NODE_H) : 0);
+            const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0) || 1;
+            const scale = rawTotal > available ? available / rawTotal : 1;
+
+            const totalUsed = rawHeights.reduce((s, h) => s + h * scale, 0) + totalGap;
+            let y = topPad + (usableH - totalUsed) / 2; // vertically center the column as a whole
+
+            return colNodes.map((n, i) => {
+                const h = rawHeights[i] * scale;
+                const seg = { ...n, y0: y, y1: y + h };
+                y += h + gap;
+                return seg;
+            });
+        }
+
         function generateDiagram() {
             const container = document.getElementById('sankey-chart');
-            if (dragObserver) dragObserver.disconnect();
 
             if (!nodes.length || !links.length) {
                 container.innerHTML = `
@@ -434,351 +489,254 @@
                 return;
             }
 
-            const nodeNames = nodes.map(n => n.name);
-            const nodeColors = nodes.map(n => n.color || '#94a3b8');
             const nodeIndex = {};
-            nodeNames.forEach((name, i) => nodeIndex[name] = i);
-
+            nodes.forEach((n, i) => nodeIndex[n.name] = i);
             const validLinks = links.filter(l => nodeIndex[l.source] !== undefined && nodeIndex[l.target] !== undefined && l.value > 0);
 
-            const sankeyLinks = { source: [], target: [], value: [], color: [], label: [] };
-            activeGradientsCache = [];
+            if (!validLinks.length) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-slate-400 py-16 px-4 text-center">
+                        <i class="fa-solid fa-cubes-stacked text-3xl mb-2 text-slate-200"></i>
+                        <p class="text-xs font-medium">No valid flows to render</p>
+                    </div>`;
+                return;
+            }
 
-            const orderedLinks = [...validLinks].sort((a, b) => b.value - a.value);
+            // ---- Column assignment ----
+            const nodeNames = nodes.map(n => n.name);
+            const rank = assignColumns(nodeNames, validLinks);
+            const maxRank = Math.max(...Object.values(rank));
+            const numCols = maxRank + 1;
 
-            orderedLinks.forEach(link => {
-                const sIdx = nodeIndex[link.source];
-                const tIdx = nodeIndex[link.target];
-                const sourceColor = nodes[sIdx].color || '#94a3b8';
-                const targetColor = nodes[tIdx].color || '#94a3b8';
+            const colNodeNames = Array.from({ length: numCols }, () => []);
+            nodeNames.forEach(name => { colNodeNames[rank[name]].push(name); });
 
-                sankeyLinks.source.push(sIdx);
-                sankeyLinks.target.push(tIdx);
-                sankeyLinks.value.push(link.value);
-                sankeyLinks.color.push('rgba(0,0,0,0.001)');
-                sankeyLinks.label.push(formatFlowValue(link.value));
-                activeGradientsCache.push({ sourceColor, targetColor, sourceName: link.source, targetName: link.target });
+            // ---- Per-node total value (inflow if it has any, else outflow) ----
+            function nodeValue(name) {
+                const inflow = validLinks.filter(l => l.target === name).reduce((s, l) => s + l.value, 0);
+                const outflow = validLinks.filter(l => l.source === name).reduce((s, l) => s + l.value, 0);
+                return inflow > 0 ? inflow : outflow;
+            }
+
+            // ---- Sizing constants ----
+            const labelFont = '600 12.5px Inter, system-ui, sans-serif';
+            const valueFont = '600 11.5px "IBM Plex Mono", monospace';
+            const colHeaderFont = '600 11px Space Grotesk, Inter, sans-serif';
+
+            const leftNames = colNodeNames[0];
+            const rightNames = colNodeNames[numCols - 1];
+            const widestLeft = Math.max(0, ...leftNames.map(n => measureTextWidth(n, labelFont)));
+            const widestRight = Math.max(0, ...rightNames.map(n => measureTextWidth(n, labelFont)));
+            const leftMargin = Math.ceil(widestLeft + 38);
+            const rightMargin = Math.ceil(widestRight + 38);
+
+            const containerRect = container.getBoundingClientRect();
+            const W = Math.max(containerRect.width || 900, 600);
+            const colHeaderH = 26;
+            const topPad = 24 + colHeaderH;
+            const bottomPad = 20;
+            const H = Math.max(440, Math.min(720, nodeNames.length * 30 + topPad + bottomPad));
+            const usableH = H - topPad - bottomPad;
+
+            const nodeThickness = 14;
+            const plotLeft = leftMargin;
+            const plotRight = W - rightMargin;
+            const plotWidth = Math.max(plotRight - plotLeft, 100);
+            const colX = Array.from({ length: numCols }, (_, i) =>
+                numCols === 1 ? plotLeft + plotWidth / 2 : plotLeft + (plotWidth - nodeThickness) * (i / (numCols - 1)) + nodeThickness / 2
+            );
+
+            // ---- Build + lay out each column ----
+            const gapFor = (count) => Math.max(4, Math.min(22, 320 / Math.max(count, 1)));
+            const laidOut = colNodeNames.map(names => {
+                const colNodes = names.map(name => ({
+                    name,
+                    color: (nodes[nodeIndex[name]] && nodes[nodeIndex[name]].color) || '#94a3b8',
+                    value: nodeValue(name)
+                })).sort((a, b) => b.value - a.value);
+                return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length));
+            });
+            const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));
+
+            // ---- Ribbons: route every valid link through its (source col -> target col) pair ----
+            // Stacked in display order per node so ribbons from/to the same node never cross
+            // each other at that node's edge.
+            const sourceCursors = new Map();
+            const targetCursors = new Map();
+            laidOut.forEach(col => col.forEach(n => {
+                sourceCursors.set(n.name, n.y0);
+                targetCursors.set(n.name, n.y0);
+            }));
+
+            // Process links grouped by source column, source nodes in display order, so the
+            // stacking cursor logic is well-defined for arbitrary (non-adjacent) column jumps.
+            const linksByRank = [...validLinks].sort((a, b) => {
+                const ra = rank[a.source], rb = rank[b.source];
+                if (ra !== rb) return ra - rb;
+                return b.value - a.value;
             });
 
-            const nodePad = nodeNames.length <= 6 ? 30 : (nodeNames.length <= 12 ? 22 : 15);
-            const nodeThickness = nodeNames.length <= 10 ? 16 : 12;
+            const ribbons = linksByRank.map(l => {
+                const sRank = rank[l.source], tRank = rank[l.target];
+                const sNode = byKeyPerCol[sRank].get(l.source);
+                const tNode = byKeyPerCol[tRank].get(l.target);
+                if (!sNode || !tNode) return null;
 
-            // Identify which nodes have no inflow (true sources, sit in the left column)
-            // vs no outflow (true sinks, sit in the right column) — used purely to size
-            // left/right margins to whichever labels live on each edge.
-            const hasInflow = new Set(validLinks.map(l => l.target));
-            const hasOutflow = new Set(validLinks.map(l => l.source));
-            const leftEdgeNames = nodeNames.filter(n => !hasInflow.has(n));
-            const rightEdgeNames = nodeNames.filter(n => !hasOutflow.has(n));
+                const sy0 = sourceCursors.get(l.source);
+                const sy1 = sy0 + (sNode.y1 - sNode.y0) * (l.value / sNode.value);
+                sourceCursors.set(l.source, sy1);
 
-            const labelFont = '600 13px Inter, system-ui, sans-serif';
-            const widestLeft = Math.max(0, ...leftEdgeNames.map(n => measureTextWidth(n, labelFont)));
-            const widestRight = Math.max(0, ...rightEdgeNames.map(n => measureTextWidth(n, labelFont)));
+                const ty0 = targetCursors.get(l.target);
+                const ty1 = ty0 + (tNode.y1 - tNode.y0) * (l.value / tNode.value);
+                targetCursors.set(l.target, ty1);
 
-            // Real margin reserved for floating labels: text width + connector gap + pill padding.
-            const leftMargin = Math.ceil(widestLeft + 34);
-            const rightMargin = Math.ceil(widestRight + 34);
+                return {
+                    source: l.source, target: l.target, value: l.value,
+                    sRank, tRank, sy0, sy1, ty0, ty1,
+                    sourceColor: sNode.color, targetColor: tNode.color
+                };
+            }).filter(Boolean);
 
-            const data = [{
-                type: "sankey",
-                orientation: "h",
-                arrangement: "snap",
-                node: {
-                    pad: nodePad,
-                    thickness: nodeThickness,
-                    line: { width: 0 },
-                    label: nodeNames,
-                    color: nodeColors,
-                    hoverlabel: { font: { family: 'Inter, system-ui, sans-serif', size: 12 }, bgcolor: '#0f172a', bordercolor: '#0f172a' },
-                    hovertemplate: '<b>%{label}</b><br>Total throughput: <b>%{value:,.1f}</b><extra></extra>'
-                },
-                link: {
-                    source: sankeyLinks.source,
-                    target: sankeyLinks.target,
-                    value: sankeyLinks.value,
-                    color: sankeyLinks.color,
-                    hoverlabel: { font: { family: 'Inter, system-ui, sans-serif', size: 12 }, bgcolor: '#0f172a', bordercolor: '#0f172a' },
-                    hovertemplate: '%{source.label} → %{target.label}<br>Value: <b>%{value:,.1f}</b><extra></extra>'
-                }
-            }];
+            activeGradientsCache = ribbons;
 
-            const layout = {
-                font: { size: 12, color: '#1e293b', family: 'Inter, system-ui, sans-serif' },
-                margin: { t: 28, r: rightMargin, b: 28, l: leftMargin },
-                height: Math.max(520, nodeNames.length * 34),
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent'
-            };
+            // ---- Build SVG ----
+            let svg = '';
+            const gradientDefs = ribbons.map((r, idx) =>
+                `<linearGradient id="flow-grad-${idx}" gradientUnits="userSpaceOnUse" x1="${colX[r.sRank]}" y1="0" x2="${colX[r.tRank]}" y2="0">
+                    <stop offset="0%" stop-color="${r.sourceColor}"/>
+                    <stop offset="30%" stop-color="${r.sourceColor}" stop-opacity="${Math.max(globalOpacityValue, 0.6)}"/>
+                    <stop offset="70%" stop-color="${r.targetColor}" stop-opacity="${Math.max(globalOpacityValue, 0.6)}"/>
+                    <stop offset="100%" stop-color="${r.targetColor}"/>
+                </linearGradient>`
+            ).join('');
+            svg += `<defs>${gradientDefs}</defs>`;
 
-            Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false }).then(() => {
-                stripNativeLabels();
-                applyLocalGradients();
-                drawValueLabels();
-                attachLinkHighlighting();
-                setupDragObserver();
+            function ribbonPath(x0, x1, r) {
+                const midX = (x0 + x1) / 2;
+                return `M ${x0} ${r.sy0}
+                    C ${midX} ${r.sy0}, ${midX} ${r.ty0}, ${x1} ${r.ty0}
+                    L ${x1} ${r.ty1}
+                    C ${midX} ${r.ty1}, ${midX} ${r.sy1}, ${x0} ${r.sy1} Z`;
+            }
+
+            ribbons.forEach((r, idx) => {
+                const x0 = colX[r.sRank], x1 = colX[r.tRank];
+                svg += `<path d="${ribbonPath(x0, x1, r)}" fill="url(#flow-grad-${idx})" class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
             });
-            chartDiv = document.getElementById('sankey-chart');
 
+            // ---- Nodes ----
+            laidOut.forEach((col, c) => {
+                col.forEach(n => {
+                    const x = colX[c] - nodeThickness / 2;
+                    svg += `<rect x="${x}" y="${n.y0}" width="${nodeThickness}" height="${Math.max(n.y1 - n.y0, 1)}" rx="2.5" fill="${n.color}" stroke="rgba(15,23,42,0.08)" stroke-width="1" class="sk-node" data-name="${escapeAttr(n.name)}"><title>${escapeAttr(n.name)}: ${formatFlowValue(n.value)}</title></rect>`;
+                });
+            });
+
+            // ---- Floating labels with leader lines (outside the flow, in margin space) ----
+            const MIN_LABEL_GAP = 26;
+            laidOut.forEach((col, c) => {
+                const isLeftmost = c === 0;
+                const isRightmost = c === numCols - 1;
+                const isLeftSide = isLeftmost || (!isRightmost && c < (numCols - 1) / 2);
+                let lastLabelMidY = -Infinity;
+
+                col.forEach(n => {
+                    const midY = (n.y0 + n.y1) / 2;
+                    const nodeHeight = n.y1 - n.y0;
+                    const tooThin = nodeHeight < 9;
+                    const wouldCollide = midY - lastLabelMidY < MIN_LABEL_GAP;
+                    const showLabel = !tooThin && !wouldCollide;
+
+                    const x = colX[c];
+                    const edgeX = isLeftSide ? x - nodeThickness / 2 : x + nodeThickness / 2;
+                    const leaderLen = isLeftmost || isRightmost ? 10 : 7;
+                    const leaderEndX = isLeftSide ? edgeX - leaderLen : edgeX + leaderLen;
+                    const textX = isLeftSide ? leaderEndX - 6 : leaderEndX + 6;
+                    const anchor = isLeftSide ? 'end' : 'start';
+
+                    if (!showLabel) return;
+                    lastLabelMidY = midY;
+
+                    svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                    svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
+                    svg += `<text x="${textX}" y="${midY - 3}" text-anchor="${anchor}" class="sk-label-name">${escapeHtml(n.name)}</text>`;
+                    svg += `<text x="${textX}" y="${midY + 12}" text-anchor="${anchor}" class="sk-label-value">${formatFlowValue(n.value)}</text>`;
+                    svg += `</g>`;
+                });
+            });
+
+            container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
+            chartDiv = container.querySelector('#sankey-svg');
+
+            attachLinkHighlighting();
             renderAccessibleSummary(validLinks);
         }
 
-        function formatFlowValue(v) {
-            if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-            return v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        function escapeAttr(s) {
+            return escapeHtml(s).replace(/"/g, '&quot;');
         }
 
-        function stripNativeLabels() {
-            const chartContainer = document.getElementById('sankey-chart');
-            const nativeLabels = chartContainer.querySelectorAll('.sankey .node text');
-            nativeLabels.forEach(t => { t.style.display = 'none'; });
-        }
-
-        function applyLocalGradients() {
-            const chartContainer = document.getElementById('sankey-chart');
-            const targetSvg = chartContainer.querySelector('svg.main-svg');
-            if (!targetSvg) return;
-
-            let localDefs = targetSvg.querySelector('defs.local-gradient-defs');
-            if (!localDefs) {
-                localDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-                localDefs.setAttribute('class', 'local-gradient-defs');
-                targetSvg.insertBefore(localDefs, targetSvg.firstChild);
-            } else {
-                localDefs.innerHTML = '';
-            }
-
-            const targetPaths = chartContainer.querySelectorAll('.sankey-link');
-
-            targetPaths.forEach((path, idx) => {
-                if (!activeGradientsCache[idx]) return;
-
-                const { sourceColor, targetColor } = activeGradientsCache[idx];
-                const activeGradId = `link-grad-${idx}`;
-
-                let bbox;
-                try { bbox = path.getBBox(); } catch (e) { bbox = null; }
-
-                const linearGradNode = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                linearGradNode.setAttribute('id', activeGradId);
-
-                if (bbox && bbox.width > 0) {
-                    linearGradNode.setAttribute('gradientUnits', 'userSpaceOnUse');
-                    linearGradNode.setAttribute('x1', bbox.x);
-                    linearGradNode.setAttribute('y1', bbox.y + bbox.height / 2);
-                    linearGradNode.setAttribute('x2', bbox.x + bbox.width);
-                    linearGradNode.setAttribute('y2', bbox.y + bbox.height / 2);
-                } else {
-                    linearGradNode.setAttribute('x1', '0%'); linearGradNode.setAttribute('y1', '0%');
-                    linearGradNode.setAttribute('x2', '100%'); linearGradNode.setAttribute('y2', '0%');
-                }
-
-                // Tighter, earlier color commitment (28%/72% vs the old 42%/58%) so each ribbon
-                // reads clearly as "this color near its source, that color near its target"
-                // instead of a long muddy gray middle section.
-                const stops = [
-                    { offset: '0%', color: sourceColor, opacity: '1.0' },
-                    { offset: '28%', color: sourceColor, opacity: String(Math.max(globalOpacityValue, 0.55)) },
-                    { offset: '72%', color: targetColor, opacity: String(Math.max(globalOpacityValue, 0.55)) },
-                    { offset: '100%', color: targetColor, opacity: '1.0' }
-                ];
-                stops.forEach(s => {
-                    const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                    stop.setAttribute('offset', s.offset);
-                    stop.setAttribute('stop-color', s.color);
-                    stop.setAttribute('stop-opacity', s.opacity);
-                    linearGradNode.appendChild(stop);
-                });
-                localDefs.appendChild(linearGradNode);
-
-                path.style.fill = `url(#${activeGradId})`;
-                path.style.stroke = 'none';
-                path.dataset.linkIdx = idx;
-            });
-
-            chartContainer.querySelectorAll('.sankey .node rect, .sankey .node path').forEach(r => {
-                r.classList.add('sankey-node-rect');
-                // Dark brand colors (near-black, like a literal iPhone Space Black) would
-                // otherwise disappear into the dark canvas — a thin light edge keeps every
-                // node block legible regardless of how dark its assigned color is.
-                r.style.stroke = 'rgba(255,255,255,0.22)';
-                r.style.strokeWidth = '1px';
-            });
-        }
-
-        // Floating labels: positioned OUTSIDE the plot area (in the margin space we reserved
-        // in generateDiagram), connected to their node with a short leader stroke. This is the
-        // classic spacious Sankey label style — labels never sit on top of link paths because
-        // they live in dedicated margin space that links can't reach.
-        function drawValueLabels() {
-            const chartContainer = document.getElementById('sankey-chart');
-            const targetSvg = chartContainer.querySelector('svg.main-svg');
-            if (!targetSvg) return;
-
-            let labelLayer = targetSvg.querySelector('g.local-label-layer');
-            if (labelLayer) labelLayer.remove();
-            labelLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            labelLayer.setAttribute('class', 'local-label-layer');
-            targetSvg.appendChild(labelLayer);
-
-            const plotWidth = targetSvg.viewBox && targetSvg.viewBox.baseVal && targetSvg.viewBox.baseVal.width
-                ? targetSvg.viewBox.baseVal.width
-                : targetSvg.getBoundingClientRect().width;
-
-            const nodeEls = chartContainer.querySelectorAll('.sankey .node');
-            nodeEls.forEach((nodeEl, i) => {
-                const rect = nodeEl.querySelector('rect, path');
-                if (!rect) return;
-                let bbox;
-                try { bbox = rect.getBBox(); } catch (e) { return; }
-
-                const transform = nodeEl.getAttribute('transform') || '';
-                const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform);
-                const tx = match ? parseFloat(match[1]) : 0;
-                const ty = match ? parseFloat(match[2]) : 0;
-
-                const absX = tx + bbox.x;
-                const absY = ty + bbox.y;
-                const nodeCenterY = absY + bbox.height / 2;
-                const isLeftColumn = (absX + bbox.width / 2) < plotWidth / 2;
-
-                const name = nodes[i] ? nodes[i].name : '';
-                const inflow = links.filter(l => l.target === name).reduce((sum, l) => sum + l.value, 0);
-                const outflow = links.filter(l => l.source === name).reduce((sum, l) => sum + l.value, 0);
-                const totalValue = inflow > 0 ? inflow : outflow;
-
-                const labelText = name;
-                const valueText = formatFlowValue(totalValue);
-
-                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                const textAnchor = isLeftColumn ? 'end' : 'start';
-
-                // Leader: short horizontal tick from the node edge out into the margin,
-                // then the label sits past it. Reads as deliberate annotation, not a floating tag.
-                const leaderLen = 10;
-                const nodeEdgeX = isLeftColumn ? absX : absX + bbox.width;
-                const leaderEndX = isLeftColumn ? nodeEdgeX - leaderLen : nodeEdgeX + leaderLen;
-                const textX = isLeftColumn ? leaderEndX - 6 : leaderEndX + 6;
-
-                const leader = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                leader.setAttribute('x1', nodeEdgeX);
-                leader.setAttribute('y1', nodeCenterY);
-                leader.setAttribute('x2', leaderEndX);
-                leader.setAttribute('y2', nodeCenterY);
-                leader.setAttribute('class', 'sankey-leader');
-                g.appendChild(leader);
-
-                const nameEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                nameEl.setAttribute('class', 'sankey-label-text');
-                nameEl.setAttribute('x', textX);
-                nameEl.setAttribute('y', nodeCenterY - 3);
-                nameEl.setAttribute('text-anchor', textAnchor);
-                nameEl.setAttribute('font-size', '13');
-                nameEl.textContent = labelText;
-
-                const valueEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                valueEl.setAttribute('class', 'sankey-label-value');
-                valueEl.setAttribute('x', textX);
-                valueEl.setAttribute('y', nodeCenterY + 13);
-                valueEl.setAttribute('text-anchor', textAnchor);
-                valueEl.setAttribute('font-size', '11');
-                valueEl.textContent = valueText;
-
-                g.appendChild(nameEl);
-                g.appendChild(valueEl);
-                labelLayer.appendChild(g);
-            });
-
-            resolveLabelCollisions(labelLayer, true);
-            resolveLabelCollisions(labelLayer, false);
-        }
-
-        // Two labels can still land close enough vertically to overlap when nodes are
-        // densely packed (e.g. many small flows into one column). This nudges colliding
-        // label groups apart along Y after initial placement, per column.
-        function resolveLabelCollisions(labelLayer, isLeftColumn) {
-            const groups = Array.from(labelLayer.children).filter(g => {
-                const nameEl = g.querySelector('.sankey-label-text');
-                return nameEl && nameEl.getAttribute('text-anchor') === (isLeftColumn ? 'end' : 'start');
-            });
-            const withY = groups.map(g => {
-                const nameEl = g.querySelector('.sankey-label-text');
-                return { g, y: parseFloat(nameEl.getAttribute('y')) };
-            }).sort((a, b) => a.y - b.y);
-
-            const minGap = 30;
-            for (let i = 1; i < withY.length; i++) {
-                const prev = withY[i - 1];
-                const cur = withY[i];
-                if (cur.y - prev.y < minGap) {
-                    const shift = minGap - (cur.y - prev.y);
-                    cur.y += shift;
-                    const nameEl = cur.g.querySelector('.sankey-label-text');
-                    const valueEl = cur.g.querySelector('.sankey-label-value');
-                    nameEl.setAttribute('y', cur.y);
-                    valueEl.setAttribute('y', cur.y + 16);
-                }
-            }
-        }
-
+        // Hovering a node or ribbon highlights only what's connected to it; the rest dims.
         function attachLinkHighlighting() {
-            const chartContainer = document.getElementById('sankey-chart');
-            const nodeEls = chartContainer.querySelectorAll('.sankey .node');
-            const linkPaths = chartContainer.querySelectorAll('.sankey-link');
+            const svgEl = chartDiv;
+            if (!svgEl) return;
+            const ribbonEls = svgEl.querySelectorAll('.sk-ribbon');
+            const nodeEls = svgEl.querySelectorAll('.sk-node');
+            const labelEls = svgEl.querySelectorAll('.sk-label');
 
-            nodeEls.forEach((nodeEl, i) => {
-                nodeEl.addEventListener('mouseenter', () => {
-                    const name = nodes[i] ? nodes[i].name : null;
-                    if (!name) return;
-                    linkPaths.forEach((path, idx) => {
-                        const g = activeGradientsCache[idx];
-                        if (!g) return;
-                        const connected = g.sourceName === name || g.targetName === name;
-                        path.classList.toggle('is-dimmed', !connected);
-                    });
+            function setHighlight(name) {
+                if (name === null) {
+                    ribbonEls.forEach(r => r.classList.remove('is-dimmed'));
+                    nodeEls.forEach(n => n.classList.remove('is-dimmed'));
+                    labelEls.forEach(l => l.classList.remove('is-dimmed'));
+                    return;
+                }
+                const connected = new Set([name]);
+                activeGradientsCache.forEach(r => {
+                    if (r.source === name) connected.add(r.target);
+                    if (r.target === name) connected.add(r.source);
                 });
-                nodeEl.addEventListener('mouseleave', () => {
-                    linkPaths.forEach(path => path.classList.remove('is-dimmed'));
+                ribbonEls.forEach(r => {
+                    const isConnected = r.dataset.source === name || r.dataset.target === name;
+                    r.classList.toggle('is-dimmed', !isConnected);
                 });
+                nodeEls.forEach(n => n.classList.toggle('is-dimmed', !connected.has(n.dataset.name)));
+                labelEls.forEach(l => l.classList.toggle('is-dimmed', !connected.has(l.dataset.name)));
+            }
+
+            nodeEls.forEach(n => {
+                n.addEventListener('mouseenter', () => setHighlight(n.dataset.name));
+                n.addEventListener('mouseleave', () => setHighlight(null));
+            });
+            labelEls.forEach(l => {
+                l.addEventListener('mouseenter', () => setHighlight(l.dataset.name));
+                l.addEventListener('mouseleave', () => setHighlight(null));
+            });
+            ribbonEls.forEach(r => {
+                r.addEventListener('mouseenter', () => {
+                    ribbonEls.forEach(other => other.classList.toggle('is-dimmed', other !== r));
+                    nodeEls.forEach(n => n.classList.toggle('is-dimmed', n.dataset.name !== r.dataset.source && n.dataset.name !== r.dataset.target));
+                    labelEls.forEach(l => l.classList.toggle('is-dimmed', l.dataset.name !== r.dataset.source && l.dataset.name !== r.dataset.target));
+                });
+                r.addEventListener('mouseleave', () => setHighlight(null));
             });
         }
 
+        // Plain-text equivalent for screen readers, since the chart's meaning shouldn't
+        // depend on color or spatial position alone.
         function renderAccessibleSummary(validLinks) {
-            const existing = document.getElementById('sankey-a11y-summary');
+            const svgEl = chartDiv;
+            if (!svgEl) return;
+            const existing = svgEl.querySelector('#sankey-a11y-summary');
             if (existing) existing.remove();
-            const summary = document.createElement('div');
-            summary.id = 'sankey-a11y-summary';
-            summary.className = 'sr-only';
-            summary.setAttribute('role', 'note');
-            summary.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;';
+            const desc = document.createElementNS('http://www.w3.org/2000/svg', 'desc');
+            desc.id = 'sankey-a11y-summary';
             const lines = validLinks.map(l => `${l.source} to ${l.target}: ${formatFlowValue(l.value)}`);
-            summary.textContent = `Sankey diagram flows. ${lines.join('. ')}.`;
-            document.getElementById('sankey-chart').appendChild(summary);
-        }
-
-        function setupDragObserver() {
-            const chartContainer = document.getElementById('sankey-chart');
-            if (!chartContainer) return;
-
-            let debounceHandle = null;
-            dragObserver = new MutationObserver((mutations) => {
-                const onlyOwnLayers = mutations.every(m =>
-                    (m.target.closest && (m.target.closest('.local-gradient-defs') || m.target.closest('.local-label-layer'))) ||
-                    (m.target.classList && (m.target.classList.contains('local-gradient-defs') || m.target.classList.contains('local-label-layer')))
-                );
-                if (onlyOwnLayers) return;
-
-                clearTimeout(debounceHandle);
-                debounceHandle = setTimeout(() => {
-                    dragObserver.disconnect();
-                    stripNativeLabels();
-                    applyLocalGradients();
-                    drawValueLabels();
-                    attachLinkHighlighting();
-                    dragObserver.observe(chartContainer, { childList: true, subtree: true, attributes: true });
-                }, 30);
-            });
-
-            dragObserver.observe(chartContainer, { childList: true, subtree: true, attributes: true });
+            desc.textContent = `Sankey diagram flows. ${lines.join('. ')}.`;
+            svgEl.insertBefore(desc, svgEl.firstChild);
         }
 
         function exportJSON() {
@@ -839,34 +797,33 @@
             reader.readAsText(file); e.target.value = '';
         });
 
-        // Plotly's own toImage/downloadImage re-render from the bare figure spec, which would
-        // export flat near-invisible link fills and skip our injected gradients and labels
-        // entirely. Instead we serialize the live, fully-styled SVG that's actually on screen.
+        // Exports the live, fully-styled SVG exactly as rendered, with no background
+        // fill — the diagram is transparent by default since we never paint one,
+        // which keeps the file usable directly in decks, docs, or other designs.
         function getStyledSvgString() {
-            const chartContainer = document.getElementById('sankey-chart');
-            const svgEl = chartContainer.querySelector('svg.main-svg');
+            const svgEl = chartDiv;
             if (!svgEl) return null;
 
             const clone = svgEl.cloneNode(true);
             clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
             // Inline the stylesheet rules our classes depend on, since a standalone SVG
-            // file has no access to this page's <style> block.
+            // file opened outside this page has no access to its <style> block.
             const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
             styleEl.textContent = `
-                .sankey-link { fill-opacity: 0.88; stroke-opacity: 0; }
-                .sankey-leader { stroke: rgba(255,255,255,0.18); stroke-width: 1px; }
-                .sankey-label-text { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 13px; fill: #f1f5f9; }
-                .sankey-label-value { font-family: Inter, system-ui, sans-serif; font-weight: 500; fill: #64748b; }
+                .sk-ribbon { }
+                .sk-node { }
+                .sk-leader { stroke: #cbd5e1; stroke-width: 1px; }
+                .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12.5px; fill: #1e293b; letter-spacing: -0.006em; }
+                .sk-label-value { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 11.5px; fill: #0f172a; }
+                .sk-col-header { font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; fill: #94a3b8; }
             `;
             clone.insertBefore(styleEl, clone.firstChild);
 
-            // Strip transient hover/interaction state and the offscreen a11y note.
+            // Strip transient hover/interaction state — exports should always reflect
+            // the diagram's resting state, not whatever was hovered at export time.
             clone.querySelectorAll('.is-dimmed').forEach(el => el.classList.remove('is-dimmed'));
-            const a11y = clone.querySelector('#sankey-a11y-summary');
-            if (a11y) a11y.remove();
 
-            const bbox = svgEl.getBBox ? null : null; // not needed; viewBox already set by Plotly
             return new XMLSerializer().serializeToString(clone);
         }
 
@@ -882,47 +839,8 @@
             URL.revokeObjectURL(url);
         }
 
-        function exportPNG() {
-            if (!chartDiv) return alert("Render diagram first.");
-            const svgString = getStyledSvgString();
-            if (!svgString) return alert("Could not read chart SVG.");
-
-            const svgEl = document.getElementById('sankey-chart').querySelector('svg.main-svg');
-            const rect = svgEl.getBoundingClientRect();
-            const scale = 3; // ~ultra-high-res export
-
-            const img = new Image();
-            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-            const svgUrl = URL.createObjectURL(svgBlob);
-
-            img.onload = function () {
-                const canvas = document.createElement('canvas');
-                canvas.width = rect.width * scale;
-                canvas.height = rect.height * scale;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#06070b';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.scale(scale, scale);
-                ctx.drawImage(img, 0, 0, rect.width, rect.height);
-                URL.revokeObjectURL(svgUrl);
-
-                canvas.toBlob(blob => {
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = 'sankey_diagram_high_res.png';
-                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                }, 'image/png');
-            };
-            img.onerror = function () {
-                URL.revokeObjectURL(svgUrl);
-                alert("PNG export failed to rasterize. Try Export Vector SVG instead.");
-            };
-            img.src = svgUrl;
-        }
-
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
-            if (dragObserver) dragObserver.disconnect();
             nodes = []; links = []; 
             localStorage.removeItem('sankeyWorkspaceData_v13');
             renderNodes(); renderFlowsTable();

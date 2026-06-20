@@ -224,6 +224,16 @@ library's own re-render instead of serializing what was actually on
 screen); the current architecture avoids that class of bug by construction,
 but only if `getStyledSvgString()` is kept in sync.
 
+**SVG `<filter>` and `<linearGradient>` defs (used by the Classic/Modern
+ribbon styles) survive export automatically** — they're inserted as normal
+child elements of the live `<svg>` root, so `cloneNode(true)` carries them
+over along with their `id`s, and every `filter="url(#...)"` reference on a
+cloned path still resolves correctly. Verified by exporting with each
+ribbon style active and rendering the resulting file standalone. This is
+different from the `var(--sk-*)` case above specifically because filters
+don't depend on the page's `:root` CSS at all — they're self-contained SVG
+elements, not CSS custom properties.
+
 ## File structure
 
 Everything is one file: `index.html`. There is no build step. Sections,
@@ -315,6 +325,78 @@ invariant and the no-overlap label guarantee — both are cheap to check by
 copying the relevant function bodies into a throwaway Node script, and both
 have been the source of real shipped bugs in earlier iterations.
 
+## Ribbon style toggle (Standard / Classic / Modern)
+
+Alongside the palette toggle, ribbons can be rendered in three finishes,
+switchable live via buttons in the canvas card header and persisted to
+`localStorage` (`ribbonStyle` in the saved state). All three use the exact
+same geometry and color resolution — the style only changes how the fill
+itself is finished, never what the diagram says or which colors mean what.
+
+- **Standard** (default): flat solid fill, no filter. This is the baseline
+  and should stay the safest, most universally-legible option.
+- **Modern (glass):** a `feDropShadow` filter (`#sk-glass-shadow`) for a
+  gentle lift off the canvas, plus a separate white linear-gradient overlay
+  path (`#sk-glass-sheen`, same `d` attribute as its parent ribbon so it's
+  perfectly clipped to the same shape) suggesting a soft highlight along
+  the top edge. The sheen is a second `<path>` element layered on top of
+  the ribbon, not baked into the ribbon's own fill — see *Hover/dim sync*
+  below for why that matters.
+- **Classic (brushed):** an SVG filter (`#sk-brush-filter`) combining (1) a
+  low-amplitude `feDisplacementMap` for organic edge softness and (2) a
+  **directional** `feTurbulence` layer (markedly different `baseFrequency`
+  on the x vs y axis) composited at low alpha via `feColorMatrix` +
+  `feComposite` + `feMerge`, clipped to the ribbon's own alpha via
+  `SourceAlpha`. The directionality (streaks running along the ribbon's own
+  horizontal flow axis, not generic noise) is what makes this read as an
+  actual brush stroke rather than static/grain — an isotropic version was
+  tried first and looked like noise, not a brush.
+
+### Getting the brush filter right took several real iterations
+
+Worth recording because the wrong-looking versions are exactly the kind of
+thing that's easy to reintroduce by "fixing" this code without re-rendering
+it. Three failed attempts before landing on the current parameters, each
+confirmed by actually rendering and screenshotting (not just code review):
+
+1. High-frequency, high-amplitude displacement
+   (`baseFrequency="0.9 0.045"`, `scale="3.2"`) — produced a jagged sawtooth
+   edge that read as a rendering bug, not a texture. Rejected.
+2. Low-frequency edge softness plus a separate fine-grain overlay at very
+   low alpha — correct concept, but invisible at the thickness real
+   ribbons actually render at on a typical viewport (the test swatches used
+   during development were much fatter than real ribbons, which hid the
+   problem). Rejected as ineffective, not wrong in principle.
+3. A "highlight streaks" variant using a `feColorMatrix` with a **negative**
+   alpha coefficient — introduced visible color fringing (the negative
+   coefficient pushes some channels below zero in ways that don't clip
+   cleanly). This was a real bug, not a style judgment call. Rejected.
+
+The version now in the file (`baseFrequency="0.012 0.35"` for the streak
+layer, alpha coefficient `0.32`, edge displacement `scale="3.5"` on a
+`"0.02 0.05"` base) was verified at both a large test-swatch size and at
+realistic thin mobile-ribbon thickness before being integrated. **If you
+change these numbers, re-verify at realistic ribbon thickness specifically**
+— a texture that looks great on a fat 200px-tall test swatch can be
+completely invisible on a real ~15px ribbon, which is exactly what
+happened in iteration 2 above.
+
+### Hover/dim sync for the glass sheen overlay
+
+The Modern style's sheen is a second `<path>` layered over its parent
+ribbon, sharing the same `class="sk-ribbon"` and the same
+`data-source`/`data-target` attributes so it dims in sync during hover
+highlighting (see `attachLinkHighlighting()`). It has `pointer-events:none`
+so it never intercepts the hover/click that should land on the ribbon
+underneath it. **If you add another overlay-style effect, follow this same
+pattern** (shared data attributes, `pointer-events:none`, same path `d`),
+and check `attachLinkHighlighting()`'s ribbon-hover handler specifically —
+it was changed from identity comparison (`other !== r`) to a same-
+source/target match (`isSameFlow`) precisely to handle a second element
+sharing one flow's data correctly; reverting to identity comparison will
+make any future overlay element get treated as an unrelated ribbon and
+dim incorrectly when its own parent is hovered.
+
 ## Change log (high-level)
 
 - **V1:** Plotly + MutationObserver gradient injection hack. Shipped with
@@ -328,9 +410,9 @@ have been the source of real shipped bugs in earlier iterations.
   lines, fixed the broken export by serializing the live styled SVG instead
   of calling Plotly's re-render. Two A/B visual mockups (light/refined vs.
   dark/dramatic) were built to choose a direction; light was chosen.
-- **V3 (current):** Full rebuild dropping Plotly entirely for hand-authored
-  SVG, after a real screenshot showed labels still overlapping/clipping and
-  the overall look reading as generic chart-library output rather than
+- **V3:** Full rebuild dropping Plotly entirely for hand-authored SVG, after
+  a real screenshot showed labels still overlapping/clipping and the
+  overall look reading as generic chart-library output rather than
   designed. Researched Bloomberg/McKinsey/FT/Economist/SankeyArt/SankeyMATIC
   technique specifically (see *Design system* above) and rebuilt the color,
   typography, and label-placement systems around those findings. Found and
@@ -339,13 +421,41 @@ have been the source of real shipped bugs in earlier iterations.
   tuning collision thresholds. Added the Restrained/Branded palette toggle
   to keep the tool usable for non-financial data while defaulting to the
   research-backed restrained look.
+- **V4 (current):** Fixed a real canvas-sizing bug reported via screenshot
+  (diagram not filling the available card space, dead space below it). Root
+  cause was NOT the obvious height-formula guess it first appeared to be —
+  it was a genuine CSS flexbox issue: a child div with `height:100%` inside
+  a `display:flex; align-items:center` parent does not resolve percentage
+  height against that parent (only `align-items:stretch`, the default,
+  does), so the chart container was collapsing to its content's intrinsic
+  size before the SVG existed. Diagnosed with isolated minimal HTML test
+  cases (not guessed from reading the CSS), confirmed with real Playwright
+  measurements. Fixed by changing the `<svg>` itself to
+  `width:100%; height:auto` so it always renders at its true content-driven
+  aspect ratio, and by computing both `W` and `H` purely from the diagram's
+  own content needs (measured label widths, node count) rather than trying
+  to match a container size that created a chicken-and-egg measurement
+  problem. This in turn surfaced a second real bug — the headline text,
+  previously drawn at a fixed 16px, could overflow/clip on the narrower `W`
+  values this fix produces on small viewports; fixed by measuring the
+  headline and scaling its font size down (floored for legibility) to fit
+  available width, the same "measure before drawing" approach already used
+  for label margins. Also added the Standard/Classic/Modern ribbon style
+  toggle (see above) at the same time, including several rendered-and-
+  rejected iterations of the brush filter before landing on a version
+  confirmed visible at realistic ribbon thickness.
 
 ## If you're picking this up fresh
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
-architecture*, then look at `generateDiagram()` itself. Don't reach for a
-charting library. Don't add a new CSS class without updating
-`getStyledSvgString()`. Don't "fix" label collisions by making the check
-more global without first understanding why it was deliberately scoped to
-edge columns only. When in doubt about a design choice, it's probably
-encoded in this file already — search for it before re-deciding it.
+architecture*, *Ribbon style toggle*, then look at `generateDiagram()`
+itself. Don't reach for a charting library. Don't add a new CSS class
+without updating `getStyledSvgString()`. Don't "fix" label collisions by
+making the check more global without first understanding why it was
+deliberately scoped to edge columns only. Don't trust a CSS sizing fix
+without actually rendering and measuring it — the flexbox bug in V4 looked
+fixed after a plausible-sounding code change and wasn't; it only got
+caught by building an isolated test case and reading real
+`getBoundingClientRect()` output. When in doubt about a design choice, it's
+probably encoded in this file already — search for it before re-deciding
+it.

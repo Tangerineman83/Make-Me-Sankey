@@ -13,6 +13,7 @@
         body { font-family: 'Inter', system_ui, sans-serif; }
         .title-font { font-family: 'Space Grotesk', 'Inter', sans-serif; }
 
+        /* Subtle scrollbars for high-density data tables */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -29,7 +30,7 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* Dark Canvas Mode Refinements */
+        /* Dark Canvas Mode Context overrides */
         .canvas-dark {
             background: #0f172a !important;
             border-color: #1e293b !important;
@@ -37,6 +38,11 @@
     </style>
 </head>
 <body class="bg-[#f4f6f9] text-slate-800 min-h-screen">
+
+    <svg xmlns="http://www.w3.org/2000/svg" class="absolute w-0 h-0" style="visibility: hidden;">
+        <defs id="global-sankey-gradients-pool"></defs>
+    </svg>
+
     <div class="max-w-[1600px] mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-6 border-b border-slate-200">
@@ -53,7 +59,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
                     <button onclick="importJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
-                        <i class="fa-solid fa-file-import text-slate-400"></i>
+                        <i class="fa-solidfa-file-import text-slate-400"></i>
                         <span>Import</span>
                     </button>
                     <button onclick="exportJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
@@ -71,7 +77,7 @@
                     <button onclick="exportSVG()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Export Vector SVG">
                         <i class="fa-solid fa-vector-square"></i>
                     </button>
-                    <button onclick="exportPNG()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Export Ultra-High-Res PNG">
+                    <button onclick="exportPNG()" class="p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all" title="Export Ultra-High-Res Image">
                         <i class="fa-solid fa-image"></i>
                     </button>
                 </div>
@@ -107,7 +113,7 @@
                         <h2 class="font-bold text-base text-slate-800 tracking-tight flex items-center gap-2">
                             <span>Flow Mapping Matrix</span>
                         </h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Construct connections & metrics</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Construct mapping intersections & metrics</p>
                     </div>
                     <button onclick="addFlowRow()" class="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-all shadow-sm">
                         <i class="fa-solid fa-circle-plus text-xs"></i>
@@ -152,7 +158,7 @@
                 <div class="mt-3.5 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center">
                     <p class="text-xs text-slate-500 flex items-center justify-center gap-1.5">
                         <i class="fa-solid fa-circle-info text-indigo-400 text-sm"></i>
-                        <span>Flow opacity optimized to 78% for richer density transitions.</span>
+                        <span>Flow opacity natively stabilized at 80% for seamless gradient blending.</span>
                     </p>
                 </div>
             </div>
@@ -168,17 +174,18 @@
         let chartDiv = null;
         let activeCanvasTheme = 'light';
 
-        function generateUUID() {
-            return 'grad-' + Math.random().toString(36).substr(2, 9);
+        // Sanitizes color hex strings so they can form valid ID strings
+        function cleanHexForId(hex) {
+            return hex.replace('#', '');
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v4', JSON.stringify({ nodes, links, activeCanvasTheme })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v5', JSON.stringify({ nodes, links, activeCanvasTheme })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v4');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v5');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
@@ -217,7 +224,7 @@
                 container.innerHTML = `
                     <div class="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-slate-400">
                         <i class="fa-solid fa-bezier-curve text-2xl mb-2.5 opacity-60 text-indigo-400"></i>
-                        <p class="text-xs font-medium">No system elements configured</p>
+                        <p class="text-xs font-medium">No elements configured</p>
                     </div>`;
                 return;
             }
@@ -244,9 +251,9 @@
         }
 
         function addNode() {
-            const name = prompt("Enter Node Descriptor Tag:", `Node Target ${nodes.length + 1}`);
+            const name = prompt("Enter Node Descriptor:", `Node ${nodes.length + 1}`);
             if (!name || !name.trim()) return;
-            const defaultColors = ['#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899', '#64748b'];
+            const defaultColors = ['#475569', '#3b82f6', '#22c55e', '#a855f7', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899'];
             const chosenColor = defaultColors[nodes.length % defaultColors.length];
             nodes.push({ name: name.trim(), color: chosenColor });
             renderNodes();
@@ -357,7 +364,7 @@
             if (!nodes.length || !links.length) {
                 container.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full text-slate-400 py-16 px-4 text-center">
-                        <i class="fa-solid fa-cubes-stacked text-4xl mb-3 text-slate-200 animate-pulse"></i>
+                        <i class="fa-solid fa-cubes-stacked text-4xl mb-3 text-slate-200"></i>
                         <h4 class="text-slate-700 font-semibold text-sm">Awaiting Pipeline Mapping</h4>
                     </div>`;
                 return;
@@ -368,8 +375,11 @@
             const nodeIndex = {};
             nodeNames.forEach((name, i) => nodeIndex[name] = i);
 
+            // Rebuild definitions pool to avoid duplicate fragments
+            const defsPool = document.getElementById('global-sankey-gradients-pool');
+            defsPool.innerHTML = '';
+
             const sankeyLinks = { source: [], target: [], value: [], color: [] };
-            const gradientPairs = [];
 
             links.forEach(link => {
                 const sIdx = nodeIndex[link.source];
@@ -378,12 +388,39 @@
                     const sourceColor = nodes[sIdx].color || '#94a3b8';
                     const targetColor = nodes[tIdx].color || '#94a3b8';
                     
+                    // Generate highly unique identity token using raw colors
+                    const gradId = `grad-${cleanHexForId(sourceColor)}-to-${cleanHexForId(targetColor)}`;
+                    
+                    // Construct and cache the persistent standard SVG linearGradient markup
+                    if (!document.getElementById(gradId)) {
+                        const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                        grad.setAttribute('id', gradId);
+                        grad.setAttribute('x1', '0%');
+                        grad.setAttribute('y1', '0%');
+                        grad.setAttribute('x2', '100%');
+                        grad.setAttribute('y2', '0%');
+
+                        const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                        stop1.setAttribute('offset', '0%');
+                        stop1.setAttribute('stop-color', sourceColor);
+                        stop1.setAttribute('stop-opacity', '0.80'); // High density glow
+
+                        const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                        stop2.setAttribute('offset', '100%');
+                        stop2.setAttribute('stop-color', targetColor);
+                        stop2.setAttribute('stop-opacity', '0.80');
+
+                        grad.appendChild(stop1);
+                        grad.appendChild(stop2);
+                        defsPool.appendChild(grad);
+                    }
+
                     sankeyLinks.source.push(sIdx);
                     sankeyLinks.target.push(tIdx);
                     sankeyLinks.value.push(link.value);
                     
-                    sankeyLinks.color.push('rgba(200,200,200,0.1)'); 
-                    gradientPairs.push({ sourceColor, targetColor });
+                    // Natively bind reference token directly inside Plotly configuration data parameters
+                    sankeyLinks.color.push(`url(#${gradId})`);
                 }
             });
 
@@ -403,7 +440,7 @@
                     source: sankeyLinks.source,
                     target: sankeyLinks.target,
                     value: sankeyLinks.value,
-                    color: sankeyLinks.color,
+                    color: sankeyLinks.color, // Plotly routes directly to global cache definition
                     hovertemplate: '%{source.label} → %{target.label}<br>Transferred Volume: <b>%{value}</b><extra></extra>'
                 }
             }];
@@ -418,61 +455,8 @@
                 plot_bgcolor: 'transparent'
             };
 
-            Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false }).then(() => {
-                applySvgGradients(gradientPairs);
-            });
+            Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false });
             chartDiv = document.getElementById('sankey-chart');
-        }
-
-        function applySvgGradients(gradientPairs) {
-            const chartContainer = document.getElementById('sankey-chart');
-            const svg = chartContainer.querySelector('svg');
-            if (!svg) return;
-
-            let defs = svg.querySelector('defs');
-            if (!defs) {
-                defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-                svg.insertBefore(defs, svg.firstChild);
-            } else {
-                // Clear any previous execution gradient fragments to avoid bloat
-                const oldGrads = defs.querySelectorAll('.custom-sankey-grad');
-                oldGrads.forEach(g => g.remove());
-            }
-
-            const paths = chartContainer.querySelectorAll('.sankey-link');
-            
-            paths.forEach((path, index) => {
-                if (!gradientPairs[index]) return;
-                
-                const { sourceColor, targetColor } = gradientPairs[index];
-                const gradId = generateUUID();
-
-                const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                grad.setAttribute('id', gradId);
-                grad.setAttribute('class', 'custom-sankey-grad');
-                grad.setAttribute('x1', '0%');
-                grad.setAttribute('y1', '0%');
-                grad.setAttribute('x2', '100%');
-                grad.setAttribute('y2', '0%');
-
-                // Shift opacity setting to 0.78 for highly vibrant visual streams
-                const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stop1.setAttribute('offset', '0%');
-                stop1.setAttribute('stop-color', sourceColor);
-                stop1.setAttribute('stop-opacity', '0.78');
-
-                const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stop2.setAttribute('offset', '100%');
-                stop2.setAttribute('stop-color', targetColor);
-                stop2.setAttribute('stop-opacity', '0.78');
-
-                grad.appendChild(stop1);
-                grad.appendChild(stop2);
-                defs.appendChild(grad);
-
-                path.style.fill = `url(#${gradId})`;
-                path.style.stroke = 'none';
-            });
         }
 
         function exportJSON() {
@@ -518,9 +502,10 @@
         function resetAll() {
             if (!confirm("Flush workspace data?")) return;
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v4');
+            localStorage.removeItem('sankeyWorkspaceData_v5');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
+            document.getElementById('global-sankey-gradients-pool').innerHTML = '';
         }
 
         function loadDefaultExample() {
@@ -530,7 +515,7 @@
                 { name: "Natural Gas", color: "#475569" },
                 { name: "Renewables", color: "#10b981" },
                 { name: "Nuclear", color: "#a855f7" },
-                { name: "Electricity", logo: "", color: "#2563eb" },
+                { name: "Electricity", color: "#2563eb" },
                 { name: "Industry", color: "#f59e0b" },
                 { name: "Transport", color: "#ef4444" },
                 { name: "Buildings", color: "#6366f1" }

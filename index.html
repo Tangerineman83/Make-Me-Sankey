@@ -248,6 +248,48 @@
         .sk-label.is-dimmed .sk-label-name { opacity: 0.32; }
         .sk-label.is-dimmed .sk-label-value { opacity: 0.32; }
 
+        /* ---- Responsive editor layout ----
+           Three tiers, deliberately NOT keyed to Tailwind's lg: (1024px) breakpoint for
+           the second tier, because that breakpoint never activates on a phone screen even
+           in landscape (typical landscape phone width is ~650-950px). Without a tier in
+           between, rotating a phone to landscape just produced a taller scroll of the same
+           narrow single-column stack — confirmed by rendering at 844x390 and seeing zero
+           layout change versus portrait. Tiers:
+             - Default (narrow/portrait): everything stacked, full width, one column.
+             - 'landscape' tier (700px+): Nodes and Flows share a left column (still
+               stacked on top of each other, since neither is wide on its own), Diagram
+               gets a genuinely wide right column — this is the tier that actually makes
+               rotating to landscape worthwhile.
+             - 'desktop' tier (1024px+): the original three-way split, Nodes / Flows /
+               Diagram each their own column.
+           generateDiagram() re-measures its container and redraws on every call, so
+           letting the Diagram column's actual width change at each tier is what makes the
+           SVG itself widen — combined with the resize listener below (which calls
+           generateDiagram() again after a debounced resize/orientation event), rotating
+           the device becomes a real way to get a wider diagram, not just a wider empty
+           card around the same-sized SVG. */
+        .sankey-layout-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-areas: "nodes" "flows" "diagram";
+        }
+        .sankey-col-nodes { grid-area: nodes; }
+        .sankey-col-flows { grid-area: flows; }
+        .sankey-col-diagram { grid-area: diagram; }
+
+        @media (min-width: 700px) {
+            .sankey-layout-grid {
+                grid-template-columns: minmax(260px, 38%) 1fr;
+                grid-template-areas: "nodes diagram" "flows diagram";
+            }
+        }
+        @media (min-width: 1024px) {
+            .sankey-layout-grid {
+                grid-template-columns: 3fr 4fr 5fr;
+                grid-template-areas: "nodes flows diagram";
+            }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .sk-ribbon, .sk-node, .sk-label-name { transition: none !important; }
         }
@@ -293,9 +335,9 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div class="sankey-layout-grid gap-6 items-start">
             
-            <div class="lg:col-span-3 panel p-0 flex flex-col">
+            <div class="sankey-col-nodes panel p-0 flex flex-col">
                 <div class="panel-header">
                     <div>
                         <div class="flex items-center gap-2">
@@ -311,7 +353,7 @@
                 <div id="nodes-list" class="p-2.5 space-y-0.5 max-h-[580px] overflow-y-auto"></div>
             </div>
 
-            <div class="lg:col-span-4 panel p-0 flex flex-col">
+            <div class="sankey-col-flows panel p-0 flex flex-col">
                 <div class="panel-header">
                     <div>
                         <span class="panel-title">Flows</span>
@@ -336,7 +378,7 @@
                 </div>
             </div>
 
-            <div class="lg:col-span-5 panel p-0 flex flex-col min-h-[540px]">
+            <div class="sankey-col-diagram panel p-0 flex flex-col min-h-[540px]">
                 <div class="panel-header flex-col !items-stretch gap-3">
                     <div class="flex items-center justify-between">
                         <div>
@@ -1638,6 +1680,42 @@
             generateDiagram();
         }
 
+        // Re-render on real size changes (orientation rotation, window resize, browser
+        // chrome show/hide) rather than only on the next data edit. Without this, the
+        // layout-tier CSS change above would only "work" the next time someone happened to
+        // add or edit something — rotating the device wouldn't visibly do anything until
+        // then, which defeats the purpose. ResizeObserver (not a plain window 'resize'
+        // listener) specifically watches the diagram's own container box, so it fires
+        // exactly when the space actually available to the SVG changes, regardless of what
+        // caused that — orientation change, the three-tier grid above switching columns at
+        // 700px/1024px, or anything else. Debounced via rAF-style timeout since rotation
+        // can fire several intermediate resize events in quick succession and there's no
+        // value in redrawing the full SVG for each one.
+        let resizeRedrawTimer = null;
+        function scheduleResizeRedraw() {
+            if (resizeRedrawTimer) clearTimeout(resizeRedrawTimer);
+            resizeRedrawTimer = setTimeout(() => {
+                resizeRedrawTimer = null;
+                if (nodes.length && links.length) generateDiagram();
+            }, 120);
+        }
+        function initResizeObserver() {
+            const shell = document.getElementById('sankey-canvas-shell');
+            if (!shell || typeof ResizeObserver === 'undefined') return;
+            let lastWidth = shell.getBoundingClientRect().width;
+            const observer = new ResizeObserver(entries => {
+                const newWidth = entries[0].contentRect.width;
+                // Only redraw on an actual width change, not every observer callback —
+                // generateDiagram() itself replaces the shell's children, which can fire a
+                // spurious observation; comparing widths avoids a feedback loop.
+                if (Math.abs(newWidth - lastWidth) > 1) {
+                    lastWidth = newWidth;
+                    scheduleResizeRedraw();
+                }
+            });
+            observer.observe(shell);
+        }
+
         window.onload = function() {
             loadFromLocalStorage();
             
@@ -1657,6 +1735,8 @@
                 renderFlowsTable();
                 generateDiagram();
             }
+
+            initResizeObserver();
         };
     </script>
 </body>

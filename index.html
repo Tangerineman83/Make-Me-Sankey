@@ -13,7 +13,6 @@
         body { font-family: 'Inter', system_ui, sans-serif; }
         .title-font { font-family: 'Space Grotesk', 'Inter', sans-serif; }
 
-        /* Subtle scrollbars for high-density data tables */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -30,7 +29,6 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* Dark Canvas Mode Context overrides */
         .canvas-dark {
             background: #0f172a !important;
             border-color: #1e293b !important;
@@ -38,10 +36,6 @@
     </style>
 </head>
 <body class="bg-[#f4f6f9] text-slate-800 min-h-screen">
-
-    <svg xmlns="http://www.w3.org/2000/svg" class="absolute w-0 h-0" style="visibility: hidden;">
-        <defs id="global-sankey-gradients-pool"></defs>
-    </svg>
 
     <div class="max-w-[1600px] mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
@@ -59,7 +53,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
                     <button onclick="importJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
-                        <i class="fa-solidfa-file-import text-slate-400"></i>
+                        <i class="fa-solid fa-file-import text-slate-400"></i>
                         <span>Import</span>
                     </button>
                     <button onclick="exportJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
@@ -70,7 +64,7 @@
 
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
                     <button onclick="generateDiagram()" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-sm">
-                        <i class="fa-solid fa-rotate"></i>
+                        <i class="fa-solidfa-rotate"></i>
                         <span>Render</span>
                     </button>
                     <div class="w-[1px] h-6 bg-slate-200 mx-1"></div>
@@ -157,8 +151,8 @@
                 </div>
                 <div class="mt-3.5 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center">
                     <p class="text-xs text-slate-500 flex items-center justify-center gap-1.5">
-                        <i class="fa-solid fa-circle-info text-indigo-400 text-sm"></i>
-                        <span>Flow opacity natively stabilized at 80% for seamless gradient blending.</span>
+                        <i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>
+                        <span>Local inline SVG architecture optimized at 80% density for hosting environments.</span>
                     </p>
                 </div>
             </div>
@@ -174,18 +168,17 @@
         let chartDiv = null;
         let activeCanvasTheme = 'light';
 
-        // Sanitizes color hex strings so they can form valid ID strings
-        function cleanHexForId(hex) {
-            return hex.replace('#', '');
+        function generateUUID() {
+            return 'inline-grad-' + Math.random().toString(36).substr(2, 9);
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v5', JSON.stringify({ nodes, links, activeCanvasTheme })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v6', JSON.stringify({ nodes, links, activeCanvasTheme })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v5');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v6');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
@@ -375,11 +368,8 @@
             const nodeIndex = {};
             nodeNames.forEach((name, i) => nodeIndex[name] = i);
 
-            // Rebuild definitions pool to avoid duplicate fragments
-            const defsPool = document.getElementById('global-sankey-gradients-pool');
-            defsPool.innerHTML = '';
-
             const sankeyLinks = { source: [], target: [], value: [], color: [] };
+            const cachedGradients = [];
 
             links.forEach(link => {
                 const sIdx = nodeIndex[link.source];
@@ -388,39 +378,13 @@
                     const sourceColor = nodes[sIdx].color || '#94a3b8';
                     const targetColor = nodes[tIdx].color || '#94a3b8';
                     
-                    // Generate highly unique identity token using raw colors
-                    const gradId = `grad-${cleanHexForId(sourceColor)}-to-${cleanHexForId(targetColor)}`;
-                    
-                    // Construct and cache the persistent standard SVG linearGradient markup
-                    if (!document.getElementById(gradId)) {
-                        const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                        grad.setAttribute('id', gradId);
-                        grad.setAttribute('x1', '0%');
-                        grad.setAttribute('y1', '0%');
-                        grad.setAttribute('x2', '100%');
-                        grad.setAttribute('y2', '0%');
-
-                        const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                        stop1.setAttribute('offset', '0%');
-                        stop1.setAttribute('stop-color', sourceColor);
-                        stop1.setAttribute('stop-opacity', '0.80'); // High density glow
-
-                        const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                        stop2.setAttribute('offset', '100%');
-                        stop2.setAttribute('stop-color', targetColor);
-                        stop2.setAttribute('stop-opacity', '0.80');
-
-                        grad.appendChild(stop1);
-                        grad.appendChild(stop2);
-                        defsPool.appendChild(grad);
-                    }
-
                     sankeyLinks.source.push(sIdx);
                     sankeyLinks.target.push(tIdx);
                     sankeyLinks.value.push(link.value);
                     
-                    // Natively bind reference token directly inside Plotly configuration data parameters
-                    sankeyLinks.color.push(`url(#${gradId})`);
+                    // Fallback visual token passed into setup configurations
+                    sankeyLinks.color.push('rgba(200,200,200,0.15)');
+                    cachedGradients.push({ sourceColor, targetColor });
                 }
             });
 
@@ -440,7 +404,7 @@
                     source: sankeyLinks.source,
                     target: sankeyLinks.target,
                     value: sankeyLinks.value,
-                    color: sankeyLinks.color, // Plotly routes directly to global cache definition
+                    color: sankeyLinks.color,
                     hovertemplate: '%{source.label} → %{target.label}<br>Transferred Volume: <b>%{value}</b><extra></extra>'
                 }
             }];
@@ -455,8 +419,58 @@
                 plot_bgcolor: 'transparent'
             };
 
-            Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false });
+            // Inject inline gradients directly inside Plotly's newly mounted inner SVG tags to bypass context bounds
+            Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false }).then(() => {
+                applyLocalGradients(cachedGradients);
+            });
             chartDiv = document.getElementById('sankey-chart');
+        }
+
+        function applyLocalGradients(cachedGradients) {
+            const chartContainer = document.getElementById('sankey-chart');
+            const targetSvg = chartContainer.querySelector('svg.main-svg');
+            if (!targetSvg) return;
+
+            // Generate or capture local sub-canvas defs space
+            let localDefs = targetSvg.querySelector('defs');
+            if (!localDefs) {
+                localDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                targetSvg.insertBefore(localDefs, targetSvg.firstChild);
+            }
+
+            const targetPaths = chartContainer.querySelectorAll('.sankey-link');
+            
+            targetPaths.forEach((path, idx) => {
+                if (!cachedGradients[idx]) return;
+                
+                const { sourceColor, targetColor } = cachedGradients[idx];
+                const activeGradId = generateUUID();
+
+                const linearGradNode = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                linearGradNode.setAttribute('id', activeGradId);
+                linearGradNode.setAttribute('x1', '0%');
+                linearGradNode.setAttribute('y1', '0%');
+                linearGradNode.setAttribute('x2', '100%');
+                linearGradNode.setAttribute('y2', '0%');
+
+                const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopStart.setAttribute('offset', '0%');
+                stopStart.setAttribute('stop-color', sourceColor);
+                stopStart.setAttribute('stop-opacity', '0.80'); // Clean high-density saturation glow
+
+                const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopEnd.setAttribute('offset', '100%');
+                stopEnd.setAttribute('stop-color', targetColor);
+                stopEnd.setAttribute('stop-opacity', '0.80');
+
+                linearGradNode.appendChild(stopStart);
+                linearGradNode.appendChild(stopEnd);
+                localDefs.appendChild(linearGradNode);
+
+                // Inline node style attachment protects the property from getting stripped during hover rendering updates
+                path.style.fill = `url(#${activeGradId})`;
+                path.style.stroke = 'none';
+            });
         }
 
         function exportJSON() {
@@ -502,10 +516,9 @@
         function resetAll() {
             if (!confirm("Flush workspace data?")) return;
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v5');
+            localStorage.removeItem('sankeyWorkspaceData_v6');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
-            document.getElementById('global-sankey-gradients-pool').innerHTML = '';
         }
 
         function loadDefaultExample() {

@@ -28,15 +28,16 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* CRITICAL FIX: Forces the browser vector engine to bypass Plotly's default alpha masking algorithms */
+        /* Master Presentation Layer Class Overrides */
         .sankey-link {
             fill-opacity: 1.0 !important;
             stroke-opacity: 0.0 !important;
             mix-blend-mode: multiply !important;
-            transition: opacity 0.15s ease;
+            transition: all 0.2s ease;
         }
         .sankey-link:hover {
-            opacity: 1.0 !important;
+            opacity: 0.85 !important;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)) !important;
         }
     </style>
 </head>
@@ -55,20 +56,31 @@
                 <p class="text-slate-500 mt-1.5 text-sm">Design crisp, high-resolution flow models instantly onto clean transparent layers.</p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="flex flex-wrap items-center gap-2">
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
-                    <button onclick="importJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
+                    <button onclick="importJSON()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Import Model Structure Data File">
                         <i class="fa-solid fa-file-import text-slate-400"></i>
-                        <span>Import</span>
+                        <span>Import Model</span>
                     </button>
-                    <button onclick="exportJSON()" class="flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all">
+                    <button onclick="exportJSON()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-all" title="Export Model Structure Data File">
                         <i class="fa-solid fa-file-code text-slate-400"></i>
-                        <span>Export Data</span>
+                        <span>Export Model</span>
                     </button>
                 </div>
 
                 <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
-                    <button onclick="generateDiagram()" class="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs sm:text-sm font-semibold rounded-lg transition-all shadow-sm">
+                    <button onclick="importBranding()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Load Custom Corporate Color Profiles">
+                        <i class="fa-solid fa-palette"></i>
+                        <span>Load Branding</span>
+                    </button>
+                    <button onclick="exportBranding()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Save Current Color Space Schemes">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save Branding</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+                    <button onclick="generateDiagram()" class="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-all shadow-sm">
                         <i class="fa-solid fa-rotate"></i>
                         <span>Render Layout</span>
                     </button>
@@ -81,9 +93,9 @@
                     </button>
                 </div>
 
-                <button onclick="resetAll()" class="px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center gap-2">
+                <button onclick="resetAll()" class="px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center gap-1.5">
                     <i class="fa-solid fa-trash-can text-xs"></i>
-                    <span>Clear Workspace</span>
+                    <span>Clear</span>
                 </button>
             </div>
         </div>
@@ -142,10 +154,10 @@
                     
                     <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
                         <span class="text-xs font-semibold text-slate-500">Mid-Flow Density:</span>
-                        <input type="range" id="global-opacity-slider" min="0" max="100" value="70" 
+                        <input type="range" id="global-opacity-slider" min="0" max="100" value="40" 
                                class="w-24 accent-slate-900 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                oninput="updateCanvasOpacity(this.value)">
-                        <span id="opacity-slider-readout" class="text-xs font-mono font-bold text-slate-700 min-w-[34px] text-right">70%</span>
+                        <span id="opacity-slider-readout" class="text-xs font-mono font-bold text-slate-700 min-w-[34px] text-right">40%</span>
                     </div>
                 </div>
                 
@@ -158,29 +170,30 @@
     </div>
 
     <input type="file" id="json-file-input" accept=".json" class="hidden">
+    <input type="file" id="branding-file-input" accept=".json" class="hidden">
 
     <script>
         let nodes = [];
         let links = [];
         let chartDiv = null;
-        let globalOpacityValue = 0.70;
+        let globalOpacityValue = 0.40; // Default baseline reset requested
 
         function generateUUID() {
             return 'inline-grad-' + Math.random().toString(36).substr(2, 9);
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v10', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v11', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v10');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v11');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
                     links = data.links || [];
-                    globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.70;
+                    globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.40;
                 }
             } catch (e) {}
         }
@@ -196,8 +209,10 @@
             const grads = targetSvg.querySelectorAll('defs linearGradient');
             grads.forEach(grad => {
                 const stops = grad.querySelectorAll('stop');
-                if (stops.length === 3) {
+                // Target midpoint transparency parameters while leaving the edges completely solid
+                if (stops.length >= 4) {
                     stops[1].setAttribute('stop-opacity', globalOpacityValue);
+                    stops[2].setAttribute('stop-opacity', globalOpacityValue);
                 }
             });
             saveToLocalStorage();
@@ -242,8 +257,8 @@
         function addNode() {
             const name = prompt("Enter Node Name:", `Node ${nodes.length + 1}`);
             if (!name || !name.trim()) return;
-            const defaultColors = ['#2e3d52', '#3b82f6', '#10b981', '#a855f7', '#f43f5e', '#f59e0b', '#06b6d4', '#64748b'];
-            const chosenColor = defaultColors[nodes.length % defaultColors.length];
+            const premiumPalette = ['#1e293b', '#2563eb', '#10b981', '#7c3aed', '#f43f5e', '#d97706', '#0891b2', '#475569'];
+            const chosenColor = premiumPalette[nodes.length % premiumPalette.length];
             nodes.push({ name: name.trim(), color: chosenColor });
             renderNodes();
             saveToLocalStorage();
@@ -389,8 +404,8 @@
                 arrangement: "snap",
                 node: {
                     pad: 24,
-                    thickness: 16,
-                    line: { width: 0 }, // Outlines stripped safely
+                    thickness: 18,
+                    line: { width: 0 },
                     label: nodeNames,
                     color: nodeColors,
                     hovertemplate: '<b>%{label}</b><br>Throughput: <b>%{value}</b><extra></extra>'
@@ -405,7 +420,7 @@
             }];
 
             const layout = {
-                font: { size: 11, color: '#334155', family: 'Inter, system-ui, sans-serif' },
+                font: { size: 11, color: '#1e293b', family: 'Inter, system-ui, sans-serif' },
                 margin: { t: 10, r: 10, b: 10, l: 10 },
                 height: 500,
                 paper_bgcolor: 'transparent',
@@ -418,6 +433,7 @@
             chartDiv = document.getElementById('sankey-chart');
         }
 
+        // Applies a 4-stop inline linear mapping combined with a specular highlight trick to generate a 3D glass effect
         function applyLocalGradients(cachedGradients) {
             const chartContainer = document.getElementById('sankey-chart');
             const targetSvg = chartContainer.querySelector('svg.main-svg');
@@ -437,33 +453,40 @@
                 const { sourceColor, targetColor } = cachedGradients[idx];
                 const activeGradId = generateUUID();
 
+                // Core directional flow trajectory configuration
                 const linearGradNode = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
                 linearGradNode.setAttribute('id', activeGradId);
                 linearGradNode.setAttribute('x1', '0%');
-                linearGradNode.setAttribute('y1', '0%');
+                linearGradNode.setAttribute('y1', '30%'); // Angle modified to capture high-contrast reflection curves
                 linearGradNode.setAttribute('x2', '100%');
                 linearGradNode.setAttribute('y2', '0%');
 
-                // Stop 1: Solid 100% opaque start anchor matching source node color block exactly
+                // Stop 1: Solid anchor matching source node color block boundary
                 const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
                 stopStart.setAttribute('offset', '0%');
                 stopStart.setAttribute('stop-color', sourceColor);
                 stopStart.setAttribute('stop-opacity', '1.0');
 
-                // Stop 2: Mid-stream color channel bound directly to user interface range slider
-                const stopMiddle = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopMiddle.setAttribute('offset', '50%');
-                stopMiddle.setAttribute('stop-color', sourceColor); 
-                stopMiddle.setAttribute('stop-opacity', globalOpacityValue);
+                // Stop 2 & 3: Double midpoint steps mirroring light refraction to capture glass structures
+                const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopMidLeft.setAttribute('offset', '40%');
+                stopMidLeft.setAttribute('stop-color', sourceColor); 
+                stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
 
-                // Stop 3: Solid 100% opaque end anchor matching target destination node color exactly
+                const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopMidRight.setAttribute('offset', '70%');
+                stopMidRight.setAttribute('stop-color', targetColor); 
+                stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
+
+                // Stop 4: Solid anchor matching destination target color boundary
                 const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
                 stopEnd.setAttribute('offset', '100%');
                 stopEnd.setAttribute('stop-color', targetColor);
                 stopEnd.setAttribute('stop-opacity', '1.0');
 
                 linearGradNode.appendChild(stopStart);
-                linearGradNode.appendChild(stopMiddle);
+                linearGradNode.appendChild(stopMidLeft);
+                linearGradNode.appendChild(stopMidRight);
                 linearGradNode.appendChild(stopEnd);
                 localDefs.appendChild(linearGradNode);
 
@@ -472,6 +495,7 @@
             });
         }
 
+        // Structural and Branding Profile File Management Methods
         function exportJSON() {
             const data = { version: 1, nodes, links };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -490,47 +514,80 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.nodes || !data.links) throw new Error("Missing arrays");
+                    if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
                     nodes = data.nodes; links = data.links;
                     renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
-                } catch (err) { alert("Parsing Error: " + err.message); }
+                } catch (err) { alert("Parsing Exception: " + err.message); }
+            };
+            reader.readAsText(file); e.target.value = '';
+        });
+
+        // Generates an isolated JSON array tracking only node color states for corporate asset alignment
+        function exportBranding() {
+            if (nodes.length === 0) return alert("Populate target system nodes to export custom corporate color assets.");
+            const brandingMap = nodes.map(n => ({ name: n.name, color: n.color }));
+            const blob = new Blob([JSON.stringify({ brandingProfile: brandingMap }, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `sankey_corporate_branding.json`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        }
+
+        function importBranding() { document.getElementById('branding-file-input').click(); }
+
+        document.getElementById('branding-file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (!data.brandingProfile) throw new Error("Invalid branding layout token signature");
+                    
+                    data.brandingProfile.forEach(profile => {
+                        const targetNode = nodes.find(n => n.name.toLowerCase() === profile.name.toLowerCase());
+                        if (targetNode) targetNode.color = profile.color;
+                    });
+                    
+                    renderNodes(); saveToLocalStorage(); generateDiagram();
+                } catch (err) { alert("Branding Profile Load Exception: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
         });
 
         function exportSVG() {
             if (!chartDiv) return alert("Render diagram first.");
-            Plotly.downloadImage(chartDiv, { format: 'svg', filename: 'sankey_transparent_vector' });
+            Plotly.downloadImage(chartDiv, { format: 'svg', filename: 'sankey_glass_vector' });
         }
 
         function exportPNG() {
             if (!chartDiv) return alert("Render diagram first.");
             Plotly.toImage(chartDiv, { format: 'png', width: 2400, height: 1500, scale: 3 }).then(url => {
                 const a = document.createElement('a');
-                a.href = url; a.download = 'sankey_transparent_high_res.png';
+                a.href = url; a.download = 'sankey_glass_high_res.png';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
             });
         }
 
         function resetAll() {
-            if (!confirm("Reset chart structure workspace?")) return;
+            if (!confirm("Reset workspace layout assets entirely?")) return;
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v10');
+            localStorage.removeItem('sankeyWorkspaceData_v11');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }
 
         function loadDefaultExample() {
             nodes = [
-                { name: "Coal", color: "#334155" },
-                { name: "Oil", color: "#1e293b" },
+                { name: "Coal", color: "#1e293b" },
+                { name: "Oil", color: "#334155" },
                 { name: "Natural Gas", color: "#475569" },
                 { name: "Renewables", color: "#10b981" },
-                { name: "Nuclear", color: "#a855f7" },
+                { name: "Nuclear", color: "#7c3aed" },
                 { name: "Electricity", color: "#2563eb" },
-                { name: "Industry", color: "#f59e0b" },
+                { name: "Industry", color: "#d97706" },
                 { name: "Transport", color: "#ef4444" },
-                { name: "Buildings", color: "#6366f1" }
+                { name: "Buildings", color: "#4f46e5" }
             ];
 
             links = [

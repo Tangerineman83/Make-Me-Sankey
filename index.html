@@ -28,16 +28,16 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* Master Presentation Layer Class Overrides */
+        /* CRITICAL LAYER OVERRIDES: Bypasses Plotly's default path masking logic */
         .sankey-link {
             fill-opacity: 1.0 !important;
             stroke-opacity: 0.0 !important;
             mix-blend-mode: multiply !important;
-            transition: all 0.2s ease;
+            transition: opacity 0.15s ease;
         }
         .sankey-link:hover {
             opacity: 0.85 !important;
-            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)) !important;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12)) !important;
         }
     </style>
 </head>
@@ -177,18 +177,20 @@
         let links = [];
         let chartDiv = null;
         let globalOpacityValue = 0.40; // Default baseline reset requested
+        let dragObserver = null;
+        let activeGradientsCache = [];
 
         function generateUUID() {
             return 'inline-grad-' + Math.random().toString(36).substr(2, 9);
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v11', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v12', JSON.stringify({ nodes, links, globalOpacityValue })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
             try {
-                const saved = localStorage.getItem('sankeyWorkspaceData_v11');
+                const saved = localStorage.getItem('sankeyWorkspaceData_v12');
                 if (saved) {
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
@@ -209,7 +211,6 @@
             const grads = targetSvg.querySelectorAll('defs linearGradient');
             grads.forEach(grad => {
                 const stops = grad.querySelectorAll('stop');
-                // Target midpoint transparency parameters while leaving the edges completely solid
                 if (stops.length >= 4) {
                     stops[1].setAttribute('stop-opacity', globalOpacityValue);
                     stops[2].setAttribute('stop-opacity', globalOpacityValue);
@@ -364,6 +365,7 @@
 
         function generateDiagram() {
             const container = document.getElementById('sankey-chart');
+            if (dragObserver) dragObserver.disconnect();
 
             if (!nodes.length || !links.length) {
                 container.innerHTML = `
@@ -380,7 +382,7 @@
             nodeNames.forEach((name, i) => nodeIndex[name] = i);
 
             const sankeyLinks = { source: [], target: [], value: [], color: [] };
-            const cachedGradients = [];
+            activeGradientsCache = [];
 
             links.forEach(link => {
                 const sIdx = nodeIndex[link.source];
@@ -394,7 +396,7 @@
                     sankeyLinks.value.push(link.value);
                     
                     sankeyLinks.color.push('rgba(0,0,0,0.1)'); 
-                    cachedGradients.push({ sourceColor, targetColor });
+                    activeGradientsCache.push({ sourceColor, targetColor });
                 }
             });
 
@@ -428,13 +430,13 @@
             };
 
             Plotly.react('sankey-chart', data, layout, { responsive: true, displayModeBar: false }).then(() => {
-                applyLocalGradients(cachedGradients);
+                applyLocalGradients();
+                setupDragObserver();
             });
             chartDiv = document.getElementById('sankey-chart');
         }
 
-        // Applies a 4-stop inline linear mapping combined with a specular highlight trick to generate a 3D glass effect
-        function applyLocalGradients(cachedGradients) {
+        function applyLocalGradients() {
             const chartContainer = document.getElementById('sankey-chart');
             const targetSvg = chartContainer.querySelector('svg.main-svg');
             if (!targetSvg) return;
@@ -448,54 +450,74 @@
             const targetPaths = chartContainer.querySelectorAll('.sankey-link');
             
             targetPaths.forEach((path, idx) => {
-                if (!cachedGradients[idx]) return;
+                if (!activeGradientsCache[idx]) return;
                 
-                const { sourceColor, targetColor } = cachedGradients[idx];
-                const activeGradId = generateUUID();
+                const { sourceColor, targetColor } = activeGradientsCache[idx];
+                const activeGradId = `drag-grad-${idx}`;
 
-                // Core directional flow trajectory configuration
-                const linearGradNode = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                linearGradNode.setAttribute('id', activeGradId);
-                linearGradNode.setAttribute('x1', '0%');
-                linearGradNode.setAttribute('y1', '30%'); // Angle modified to capture high-contrast reflection curves
-                linearGradNode.setAttribute('x2', '100%');
-                linearGradNode.setAttribute('y2', '0%');
+                // Check if this explicit gradient token is already cached in defs
+                let existingGrad = localDefs.querySelector(`#${activeGradId}`);
+                if (!existingGrad) {
+                    existingGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                    existingGrad.setAttribute('id', activeGradId);
+                    existingGrad.setAttribute('x1', '0%');
+                    existingGrad.setAttribute('y1', '30%'); 
+                    existingGrad.setAttribute('x2', '100%');
+                    existingGrad.setAttribute('y2', '0%');
 
-                // Stop 1: Solid anchor matching source node color block boundary
-                const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopStart.setAttribute('offset', '0%');
-                stopStart.setAttribute('stop-color', sourceColor);
-                stopStart.setAttribute('stop-opacity', '1.0');
+                    const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                    stopStart.setAttribute('offset', '0%');
+                    stopStart.setAttribute('stop-color', sourceColor);
+                    stopStart.setAttribute('stop-opacity', '1.0');
 
-                // Stop 2 & 3: Double midpoint steps mirroring light refraction to capture glass structures
-                const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopMidLeft.setAttribute('offset', '40%');
-                stopMidLeft.setAttribute('stop-color', sourceColor); 
-                stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
+                    const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                    stopMidLeft.setAttribute('offset', '40%');
+                    stopMidLeft.setAttribute('stop-color', sourceColor); 
+                    stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
 
-                const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopMidRight.setAttribute('offset', '70%');
-                stopMidRight.setAttribute('stop-color', targetColor); 
-                stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
+                    const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                    stopMidRight.setAttribute('offset', '70%');
+                    stopMidRight.setAttribute('stop-color', targetColor); 
+                    stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
 
-                // Stop 4: Solid anchor matching destination target color boundary
-                const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                stopEnd.setAttribute('offset', '100%');
-                stopEnd.setAttribute('stop-color', targetColor);
-                stopEnd.setAttribute('stop-opacity', '1.0');
+                    const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                    stopEnd.setAttribute('offset', '100%');
+                    stopEnd.setAttribute('stop-color', targetColor);
+                    stopEnd.setAttribute('stop-opacity', '1.0');
 
-                linearGradNode.appendChild(stopStart);
-                linearGradNode.appendChild(stopMidLeft);
-                linearGradNode.appendChild(stopMidRight);
-                linearGradNode.appendChild(stopEnd);
-                localDefs.appendChild(linearGradNode);
+                    existingGrad.appendChild(stopStart);
+                    existingGrad.appendChild(stopMidLeft);
+                    existingGrad.appendChild(stopMidRight);
+                    existingGrad.appendChild(stopEnd);
+                    localDefs.appendChild(existingGrad);
+                } else {
+                    // Update opacity parameters on hot redraw adjustments
+                    const stops = existingGrad.querySelectorAll('stop');
+                    if (stops.length >= 4) {
+                        stops[1].setAttribute('stop-opacity', globalOpacityValue);
+                        stops[2].setAttribute('stop-opacity', globalOpacityValue);
+                    }
+                }
 
                 path.style.fill = `url(#${activeGradId})`;
                 path.style.stroke = 'none';
             });
         }
 
-        // Structural and Branding Profile File Management Methods
+        // MutationObserver logic handles persistent link gradient styling frame-by-frame during user node dragging
+        function setupDragObserver() {
+            const chartContainer = document.getElementById('sankey-chart');
+            if (!chartContainer) return;
+
+            dragObserver = new MutationObserver(() => {
+                dragObserver.disconnect(); // Temporary pause prevents loop exceptions while appending styles
+                applyLocalGradients();
+                dragObserver.observe(chartContainer, { childList: true, subtree: true, attributes: true });
+            });
+
+            dragObserver.observe(chartContainer, { childList: true, subtree: true, attributes: true });
+        }
+
         function exportJSON() {
             const data = { version: 1, nodes, links };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -522,9 +544,8 @@
             reader.readAsText(file); e.target.value = '';
         });
 
-        // Generates an isolated JSON array tracking only node color states for corporate asset alignment
         function exportBranding() {
-            if (nodes.length === 0) return alert("Populate target system nodes to export custom corporate color assets.");
+            if (nodes.length === 0) return alert("Populate target system nodes to export custom profiles.");
             const brandingMap = nodes.map(n => ({ name: n.name, color: n.color }));
             const blob = new Blob([JSON.stringify({ brandingProfile: brandingMap }, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -542,7 +563,7 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.brandingProfile) throw new Error("Invalid branding layout token signature");
+                    if (!data.brandingProfile) throw new Error("Invalid profile array signature.");
                     
                     data.brandingProfile.forEach(profile => {
                         const targetNode = nodes.find(n => n.name.toLowerCase() === profile.name.toLowerCase());
@@ -570,9 +591,10 @@
         }
 
         function resetAll() {
-            if (!confirm("Reset workspace layout assets entirely?")) return;
+            if (!confirm("Reset chart workspace entirely?")) return;
+            if (dragObserver) dragObserver.disconnect();
             nodes = []; links = []; 
-            localStorage.removeItem('sankeyWorkspaceData_v11');
+            localStorage.removeItem('sankeyWorkspaceData_v12');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }

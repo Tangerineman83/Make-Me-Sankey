@@ -28,7 +28,7 @@
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8fafc; }
 
-        /* CRITICAL LAYER OVERRIDES: Bypasses Plotly's default path masking logic */
+        /* Presentation Layer Class Overrides */
         .sankey-link {
             fill-opacity: 1.0 !important;
             stroke-opacity: 0.0 !important;
@@ -95,7 +95,7 @@
 
                 <button onclick="resetAll()" class="px-3.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center gap-1.5">
                     <i class="fa-solid fa-trash-can text-xs"></i>
-                    <span>Clear</span>
+                    <span>Clear All</span>
                 </button>
             </div>
         </div>
@@ -161,8 +161,13 @@
                     </div>
                 </div>
                 
-                <div class="flex-1 bg-transparent p-2 rounded-xl border border-dashed border-slate-200 flex items-center justify-center min-h-[460px]">
+                <div class="flex-1 bg-transparent p-2 rounded-xl border border-dashed border-slate-200 flex items-center justify-center min-h-[460px] relative">
                     <div id="sankey-chart" class="w-full h-full"></div>
+                    
+                    <button onclick="resetCanvasPosition()" class="absolute bottom-4 right-4 z-20 px-3 py-1.5 bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl shadow-sm text-xs font-medium flex items-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-compress"></i>
+                        <span>Reset Position</span>
+                    </button>
                 </div>
             </div>
             
@@ -176,7 +181,7 @@
         let nodes = [];
         let links = [];
         let chartDiv = null;
-        let globalOpacityValue = 0.40; // Default baseline reset requested
+        let globalOpacityValue = 0.40; 
         let dragObserver = null;
         let activeGradientsCache = [];
 
@@ -219,6 +224,17 @@
             saveToLocalStorage();
         }
 
+        // Actionable layout-only reset method maps directly to view position bounds
+        function resetCanvasPosition() {
+            if (!chartDiv) return;
+            Plotly.relayout(chartDiv, {
+                'node.x': null,
+                'node.y': null
+            }).then(() => {
+                applyLocalGradients();
+            });
+        }
+
         function renderNodes() {
             const container = document.getElementById('nodes-list');
             const badge = document.getElementById('node-count-badge');
@@ -259,7 +275,7 @@
             const name = prompt("Enter Node Name:", `Node ${nodes.length + 1}`);
             if (!name || !name.trim()) return;
             const premiumPalette = ['#1e293b', '#2563eb', '#10b981', '#7c3aed', '#f43f5e', '#d97706', '#0891b2', '#475569'];
-            const chosenColor = premiumPalette[nodes.length % premiumPalette.length];
+            const chosenColor = premiumPalette[nodes.length % defaultColors.length] || '#475569';
             nodes.push({ name: name.trim(), color: chosenColor });
             renderNodes();
             saveToLocalStorage();
@@ -445,6 +461,9 @@
             if (!localDefs) {
                 localDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
                 targetSvg.insertBefore(localDefs, targetSvg.firstChild);
+            } else {
+                // Clear out existing gradients to force color recalculations upon loading new profile files
+                localDefs.innerHTML = '';
             }
 
             const targetPaths = chartContainer.querySelectorAll('.sankey-link');
@@ -455,62 +474,50 @@
                 const { sourceColor, targetColor } = activeGradientsCache[idx];
                 const activeGradId = `drag-grad-${idx}`;
 
-                // Check if this explicit gradient token is already cached in defs
-                let existingGrad = localDefs.querySelector(`#${activeGradId}`);
-                if (!existingGrad) {
-                    existingGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                    existingGrad.setAttribute('id', activeGradId);
-                    existingGrad.setAttribute('x1', '0%');
-                    existingGrad.setAttribute('y1', '30%'); 
-                    existingGrad.setAttribute('x2', '100%');
-                    existingGrad.setAttribute('y2', '0%');
+                const existingGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                existingGrad.setAttribute('id', activeGradId);
+                existingGrad.setAttribute('x1', '0%');
+                existingGrad.setAttribute('y1', '30%'); 
+                existingGrad.setAttribute('x2', '100%');
+                existingGrad.setAttribute('y2', '0%');
 
-                    const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                    stopStart.setAttribute('offset', '0%');
-                    stopStart.setAttribute('stop-color', sourceColor);
-                    stopStart.setAttribute('stop-opacity', '1.0');
+                const stopStart = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopStart.setAttribute('offset', '0%');
+                stopStart.setAttribute('stop-color', sourceColor);
+                stopStart.setAttribute('stop-opacity', '1.0');
 
-                    const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                    stopMidLeft.setAttribute('offset', '40%');
-                    stopMidLeft.setAttribute('stop-color', sourceColor); 
-                    stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
+                const stopMidLeft = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopMidLeft.setAttribute('offset', '40%');
+                stopMidLeft.setAttribute('stop-color', sourceColor); 
+                stopMidLeft.setAttribute('stop-opacity', globalOpacityValue);
 
-                    const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                    stopMidRight.setAttribute('offset', '70%');
-                    stopMidRight.setAttribute('stop-color', targetColor); 
-                    stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
+                const stopMidRight = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopMidRight.setAttribute('offset', '70%');
+                stopMidRight.setAttribute('stop-color', targetColor); 
+                stopMidRight.setAttribute('stop-opacity', globalOpacityValue);
 
-                    const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-                    stopEnd.setAttribute('offset', '100%');
-                    stopEnd.setAttribute('stop-color', targetColor);
-                    stopEnd.setAttribute('stop-opacity', '1.0');
+                const stopEnd = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+                stopEnd.setAttribute('offset', '100%');
+                stopEnd.setAttribute('stop-color', targetColor);
+                stopEnd.setAttribute('stop-opacity', '1.0');
 
-                    existingGrad.appendChild(stopStart);
-                    existingGrad.appendChild(stopMidLeft);
-                    existingGrad.appendChild(stopMidRight);
-                    existingGrad.appendChild(stopEnd);
-                    localDefs.appendChild(existingGrad);
-                } else {
-                    // Update opacity parameters on hot redraw adjustments
-                    const stops = existingGrad.querySelectorAll('stop');
-                    if (stops.length >= 4) {
-                        stops[1].setAttribute('stop-opacity', globalOpacityValue);
-                        stops[2].setAttribute('stop-opacity', globalOpacityValue);
-                    }
-                }
+                existingGrad.appendChild(stopStart);
+                existingGrad.appendChild(stopMidLeft);
+                existingGrad.appendChild(stopMidRight);
+                existingGrad.appendChild(stopEnd);
+                localDefs.appendChild(existingGrad);
 
                 path.style.fill = `url(#${activeGradId})`;
                 path.style.stroke = 'none';
             });
         }
 
-        // MutationObserver logic handles persistent link gradient styling frame-by-frame during user node dragging
         function setupDragObserver() {
             const chartContainer = document.getElementById('sankey-chart');
             if (!chartContainer) return;
 
             dragObserver = new MutationObserver(() => {
-                dragObserver.disconnect(); // Temporary pause prevents loop exceptions while appending styles
+                dragObserver.disconnect(); 
                 applyLocalGradients();
                 dragObserver.observe(chartContainer, { childList: true, subtree: true, attributes: true });
             });

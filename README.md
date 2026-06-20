@@ -580,6 +580,43 @@ much smaller **theme JSON** (`exportTheme()`/`importTheme()`,
 nodes at all), reflecting the new separation between theme (system/app
 level) and node-to-slot assignment (per-diagram data).
 
+## Responsive layout and live resize/rotation
+
+The editor grid (Nodes / Flows / Diagram) uses a custom three-tier CSS
+grid (`.sankey-layout-grid` and its `.sankey-col-*` children), not
+Tailwind's `lg:` utility classes. This was a deliberate fix: Tailwind's
+`lg:` breakpoint is 1024px, which never activates on a phone screen even
+in landscape (a phone in landscape is typically ~650-950px wide) — without
+an intermediate tier, rotating a phone produced a taller scroll of the
+exact same narrow single-column layout, confirmed by rendering before the
+fix and seeing zero layout change between portrait and landscape. The
+three tiers: default/narrow stacks everything in one column; 700px+ pairs
+Nodes+Flows into a left column and gives Diagram a genuinely wide right
+column (this is the tier that makes landscape actually worth rotating to);
+1024px+ is the original three-way split.
+
+A CSS layout change alone isn't sufficient, though — `generateDiagram()`
+only measures its container and redraws when it's called, and previously
+the only things that called it were data edits. Rotating the device
+without touching any data wouldn't have redrawn the SVG at its new,
+correct width until the next unrelated edit. Fixed with a `ResizeObserver`
+(`initResizeObserver()`, wired up at the end of `window.onload`) watching
+`#sankey-canvas-shell` directly, which calls `generateDiagram()` again
+(debounced ~120ms via `scheduleResizeRedraw()`, since rotation fires
+several intermediate resize events in quick succession) whenever the
+container's real width changes by more than a pixel. The width-delta
+check specifically guards against a feedback loop: `generateDiagram()`
+itself replaces the shell's children, which can trigger a spurious
+`ResizeObserver` callback even when the box itself didn't change size;
+comparing against the last known width before scheduling a redraw avoids
+redrawing in response to its own previous redraw. Verified by simulating
+an actual rotation in a live page (resizing the same loaded page from a
+portrait viewport to a landscape one, not reloading at a different
+viewport) and confirming the SVG's `viewBox` width changed with zero other
+interaction, in both directions (portrait→landscape and back), and that a
+single normal data edit still triggers exactly one `generateDiagram()`
+call (not two, which would indicate the observer was firing spuriously).
+
 ## Change log (high-level)
 
 - **V1:** Plotly + MutationObserver gradient injection hack. Shipped with
@@ -708,12 +745,37 @@ level) and node-to-slot assignment (per-diagram data).
   data file format (bumped to `version: 2`); old files are rejected with
   a specific error rather than silently mis-loaded, and the bundled
   sample files were regenerated to match.
+- **V7 (current):** Made rotating a phone to landscape a genuine way to
+  get a wider diagram, not just a taller scroll of the same narrow
+  layout — confirmed broken first (rendered at 844×390 and found zero
+  layout difference from portrait) before fixing it, rather than assuming
+  the existing `lg:` responsive classes already covered this. Two
+  separate problems, both real: (1) the editor grid's only non-stacked
+  breakpoint was Tailwind's `lg:` (1024px), which no phone reaches even
+  in landscape — replaced with a custom three-tier CSS grid
+  (`.sankey-layout-grid`) with an intermediate 700px+ tier that pairs
+  Nodes+Flows into one column and gives Diagram a genuinely wide second
+  column. (2) Even with the right CSS, nothing told the diagram to
+  redraw when its container's size actually changed — `generateDiagram()`
+  was only ever called from data-edit paths, so rotating the device
+  without touching any data wouldn't have redrawn the SVG until the next
+  unrelated edit. Fixed with a `ResizeObserver` on the canvas shell,
+  debounced, with a width-delta guard to avoid the observer re-triggering
+  itself off of `generateDiagram()`'s own DOM mutations. Verified by
+  resizing one live, already-loaded page from a portrait viewport to a
+  landscape one (not reloading at a different viewport, which wouldn't
+  prove the live-resize path works) and confirming the rendered SVG's
+  `viewBox` width changed with no other interaction, in both directions,
+  plus confirming a single normal data edit still triggers exactly one
+  `generateDiagram()` call so the new observer isn't causing redundant
+  redraws.
 
 ## If you're picking this up fresh
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
 architecture*, *Ribbon style toggle*, *App chrome*, *Theme palette
-architecture*, then look at `generateDiagram()` itself. Don't reach for a
+architecture*, *Responsive layout and live resize/rotation*, then look at
+`generateDiagram()` itself. Don't reach for a
 charting library. Don't add a new CSS class without updating
 `getStyledSvgString()`. Don't "fix" label collisions by making the check
 more global without first understanding why it was deliberately scoped to

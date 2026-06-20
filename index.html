@@ -102,7 +102,7 @@
         .color-popover {
             position: absolute; z-index: 50; background: #fff; border-radius: 12px;
             border: 1px solid #e7e3d8; box-shadow: 0 12px 32px rgba(28,33,39,0.16);
-            padding: 10px; width: 200px;
+            padding: 10px; width: 220px;
         }
         .color-popover-label {
             font-size: 9px; font-weight: 700; color: #b3ad9c; text-transform: uppercase;
@@ -120,22 +120,68 @@
             content: ''; position: absolute; inset: 0; border-radius: 5px;
             box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #1c2127;
         }
-        .color-popover-custom {
-            display: flex; align-items: center; gap: 6px; margin-top: 8px;
-            padding-top: 8px; border-top: 1px solid #f0eee6;
+        .color-popover-hint {
+            font-size: 9.5px; color: #b3ad9c; text-align: center; margin-top: 8px;
+            padding-top: 7px; border-top: 1px solid #f0eee6;
         }
-        .color-popover-custom input[type="text"] {
-            flex: 1; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: #1c2127;
-            border: 1px solid #e7e3d8; border-radius: 6px; padding: 4px 6px; min-width: 0;
+        .color-popover-hint i { font-size: 8.5px; margin-right: 2px; }
+
+        /* Small pencil affordance shown on each base-row (theme) swatch, opening the
+           gradient/RGB editor for that theme slot. Hidden until hover so the base row
+           doesn't look cluttered at rest. */
+        .color-swatch-edit-affordance {
+            position: absolute; bottom: -3px; right: -3px; width: 13px; height: 13px;
+            background: #1c2127; color: #fff; border-radius: 50%; display: none;
+            align-items: center; justify-content: center; font-size: 7px;
+            box-shadow: 0 0 0 1.5px #fff;
         }
-        .color-popover-custom input[type="text"]:focus { outline: none; border-color: #9a9484; }
-        .custom-swatch-input-wrap {
-            width: 22px; height: 22px; border-radius: 6px; border: 1px solid #e7e3d8;
-            position: relative; overflow: hidden; cursor: pointer; flex-shrink: 0;
+        .color-swatch-cell:hover .color-swatch-edit-affordance { display: flex; }
+
+        /* Gradient/RGB theme color editor (replaces the grid view when editing a slot) */
+        .theme-editor-header {
+            display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+            font-size: 11px; font-weight: 600; color: #1c2127;
         }
-        .custom-swatch-input-wrap input[type="color"] {
-            position: absolute; inset: -50%; width: 200%; height: 200%; border: 0; cursor: pointer;
+        .theme-editor-back {
+            width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+            border-radius: 5px; color: #7c7766; cursor: pointer; font-size: 9px; flex-shrink: 0;
         }
+        .theme-editor-back:hover { background: #f4f2ed; color: #1c2127; }
+        .sv-square {
+            position: relative; width: 100%; height: 110px; border-radius: 8px;
+            cursor: crosshair; overflow: hidden;
+        }
+        .sv-white-layer { position: absolute; inset: 0; background: linear-gradient(to right, #fff, rgba(255,255,255,0)); }
+        .sv-black-layer { position: absolute; inset: 0; background: linear-gradient(to top, #000, rgba(0,0,0,0)); }
+        .sv-cursor {
+            position: absolute; width: 11px; height: 11px; border-radius: 50%;
+            border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+            transform: translate(-50%, -50%); pointer-events: none;
+        }
+        .hue-strip {
+            position: relative; width: 100%; height: 12px; border-radius: 6px; margin-top: 8px; cursor: pointer;
+            background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+        }
+        .hue-cursor {
+            position: absolute; top: -2px; width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+            transform: translateX(-50%); pointer-events: none;
+        }
+        .rgb-row { display: flex; gap: 5px; margin-top: 8px; }
+        .rgb-field { flex: 1; min-width: 0; }
+        .rgb-field label { font-size: 8.5px; color: #b3ad9c; font-weight: 700; text-transform: uppercase; }
+        .rgb-field input {
+            width: 100%; box-sizing: border-box; border: 1px solid #e7e3d8; border-radius: 6px;
+            padding: 4px 5px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; margin-top: 2px;
+        }
+        .rgb-field input:focus { outline: none; border-color: #9a9484; }
+        .hex-row { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+        .hex-preview { width: 24px; height: 24px; border-radius: 6px; border: 1px solid #e7e3d8; flex-shrink: 0; }
+        .hex-field {
+            flex: 1; min-width: 0; border: 1px solid #e7e3d8; border-radius: 6px;
+            padding: 5px 7px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: #1c2127;
+        }
+        .hex-field:focus { outline: none; border-color: #9a9484; }
 
         .interactive-row { transition: all 0.15s ease; }
         .interactive-row:hover { background-color: #f8f7f2; }
@@ -188,7 +234,6 @@
         .sk-label-name {
             font-family: 'Inter', system-ui, sans-serif;
             font-weight: 600;
-            font-size: 12.5px;
             fill: var(--sk-ink);
             letter-spacing: -0.006em;
             cursor: pointer;
@@ -198,31 +243,10 @@
             font-family: 'Inter', system-ui, sans-serif;
             font-variant-numeric: tabular-nums lining-nums;
             font-weight: 700;
-            font-size: 11.5px;
             fill: var(--sk-ink);
         }
         .sk-label.is-dimmed .sk-label-name { opacity: 0.32; }
         .sk-label.is-dimmed .sk-label-value { opacity: 0.32; }
-
-        .sk-col-header {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-weight: 600;
-            font-size: 10.5px;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            fill: var(--sk-ink-muted);
-        }
-
-        .sk-headline {
-            font-family: 'Space Grotesk', 'Inter', sans-serif;
-            font-weight: 600;
-            fill: var(--sk-ink);
-        }
-        .sk-subhead {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-weight: 500;
-            fill: var(--sk-ink-muted);
-        }
 
         @media (prefers-reduced-motion: reduce) {
             .sk-ribbon, .sk-node, .sk-label-name { transition: none !important; }
@@ -251,11 +275,11 @@
 
                 <div class="w-px h-5 bg-[#e7e3d8] mx-1.5"></div>
 
-                <button onclick="importBranding()" class="btn btn-ghost" title="Load a saved color palette">
-                    <i class="fa-solid fa-palette text-[11px]"></i><span>Load colors</span>
+                <button onclick="importTheme()" class="btn btn-ghost" title="Load a theme palette (8 colors)">
+                    <i class="fa-solid fa-palette text-[11px]"></i><span>Load theme</span>
                 </button>
-                <button onclick="exportBranding()" class="btn btn-ghost" title="Save current node colors as a reusable palette">
-                    <i class="fa-solid fa-floppy-disk text-[11px]"></i><span>Save colors</span>
+                <button onclick="exportTheme()" class="btn btn-ghost" title="Save the current theme palette">
+                    <i class="fa-solid fa-floppy-disk text-[11px]"></i><span>Save theme</span>
                 </button>
 
                 <div class="w-px h-5 bg-[#e7e3d8] mx-1.5"></div>
@@ -360,8 +384,64 @@
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
         let activeGradientsCache = [];
 
+        // ---- Theme palette ----
+        // The single source of truth for "Branded" mode colors. Nodes don't store a literal
+        // hex value — they store a REFERENCE into this palette ({themeIndex, variant}), and
+        // the actual color is derived live by resolveThemeColor() every time it's needed.
+        // This means changing a theme color (e.g. making theme slot 3 a different blue)
+        // automatically updates every node that references it, at whatever tint/shade
+        // variant each node had chosen — exactly like Word/Excel's "Theme Colors": the
+        // document doesn't remember "blue", it remembers "Accent 3, 25% Lighter", so
+        // changing the theme's Accent 3 updates every use of it throughout the document.
+        //
+        // System default, baked into the app (not loaded from any file unless the user
+        // explicitly loads a theme JSON to override it). Index 0/1 are reserved as the
+        // neutral ink/grey anchors (matching the diagram's own restrained-mode neutrals);
+        // 2-7 are the working accent hues.
+        let themePalette = ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'];
+
+        // Exact Microsoft Office picker percentages (not arbitrary mix amounts). Lighter
+        // tints move the base color toward white by this fraction; darker shades move it
+        // toward black. Order here is darkest-tint-first only because that's the order the
+        // popover grid renders top-to-bottom for the lightest-at-top layout — see
+        // buildColorPopover().
+        const THEME_TINT_PERCENTS = [0.80, 0.60, 0.40, 0.25, 0.10]; // "tint4".."tint0", lightest to least-light
+        const THEME_SHADE_PERCENTS = [0.25, 0.50]; // "shade0".."shade1", least-dark to darkest
+
+        function mixToward(hex, target, amount) {
+            const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            const mix = (c) => Math.round(c + (target - c) * amount).toString(16).padStart(2, '0');
+            return '#' + mix(r) + mix(g) + mix(b);
+        }
+
+        // variant is 'base', 'tint0'..'tint4' (tint0 = 10% lighter ... tint4 = 80% lighter),
+        // or 'shade0'..'shade1' (shade0 = 25% darker, shade1 = 50% darker).
+        function deriveVariant(baseHex, variant) {
+            if (!variant || variant === 'base') return baseHex;
+            if (variant.startsWith('tint')) {
+                const i = parseInt(variant.slice(4), 10);
+                return mixToward(baseHex, 255, THEME_TINT_PERCENTS[4 - i]);
+            }
+            if (variant.startsWith('shade')) {
+                const i = parseInt(variant.slice(5), 10);
+                return mixToward(baseHex, 0, THEME_SHADE_PERCENTS[i]);
+            }
+            return baseHex;
+        }
+
+        // Resolves a node's color reference ({themeIndex, variant}) to an actual hex, live
+        // against the current themePalette. Falls back to a sensible neutral if the
+        // reference is missing or out of range (shouldn't happen via the UI, but keeps
+        // hand-edited/older JSON from crashing the renderer).
+        function resolveThemeColor(colorRef) {
+            if (!colorRef || typeof colorRef.themeIndex !== 'number') return '#7c8694';
+            const base = themePalette[colorRef.themeIndex];
+            if (!base) return '#7c8694';
+            return deriveVariant(base, colorRef.variant);
+        }
+
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode, ribbonStyle })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode, ribbonStyle, themePalette })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
@@ -374,6 +454,9 @@
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
+                    if (Array.isArray(data.themePalette) && data.themePalette.length === 8) {
+                        themePalette = data.themePalette;
+                    }
                 }
             } catch (e) {}
         }
@@ -421,7 +504,7 @@
                 const div = document.createElement('div');
                 div.className = 'editor-row';
                 div.innerHTML = `
-                    <button type="button" class="swatch-trigger" style="background:${node.color || '#7c8694'};"
+                    <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(node.color)};"
                             onclick="openColorPickerFor(this, ${index})" title="Change color"></button>
                     <input type="text" value="${escapeAttr(node.name)}" class="field-input flex-1 min-w-0"
                            onchange="updateNodeName(${index}, this.value)">
@@ -434,111 +517,250 @@
             updateFlowSelects();
         }
 
-        // A small fixed set of core hues plus tint/shade variations, presented as one
-        // grid (the Microsoft-Office picker pattern) so branding stays consistent across
-        // a diagram instead of drifting across arbitrary RGB values. A custom hex field
-        // remains available underneath for genuine one-off brand colors.
-        const SWATCH_CORE_HUES = ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'];
-        const SWATCH_TINTS = [0.55, 0.3, 0.12];
-        const SWATCH_SHADES = [-0.22, -0.42];
-
-        function mixToward(hex, target, amount) {
-            const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-            const mix = (c) => Math.round(c + (target - c) * amount).toString(16).padStart(2, '0');
-            return '#' + mix(r) + mix(g) + mix(b);
-        }
-        function shadeHue(hex, percent) {
-            if (percent > 0) return mixToward(hex, 255, percent);
-            if (percent < 0) return mixToward(hex, 0, Math.abs(percent));
-            return hex;
-        }
-
         let activeColorPicker = null;
+        let colorPickerOnThemeChange = null; // re-render hook set by openColorPickerFor
 
         function closeColorPicker() {
             if (activeColorPicker) { activeColorPicker.remove(); activeColorPicker = null; }
             document.removeEventListener('mousedown', handleColorPickerOutsideClick, true);
+            colorPickerOnThemeChange = null;
         }
 
         function handleColorPickerOutsideClick(e) {
             if (activeColorPicker && !activeColorPicker.contains(e.target)) closeColorPicker();
         }
 
-        function buildColorPopover(currentColor, onSelect) {
+        // ---- HSV <-> RGB helpers for the gradient/RGB theme-color editor ----
+        function hsvToRgb(h, s, v) {
+            const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+            let r, g, b;
+            if (h < 60) [r, g, b] = [c, x, 0];
+            else if (h < 120) [r, g, b] = [x, c, 0];
+            else if (h < 180) [r, g, b] = [0, c, x];
+            else if (h < 240) [r, g, b] = [0, x, c];
+            else if (h < 300) [r, g, b] = [x, 0, c];
+            else [r, g, b] = [c, 0, x];
+            return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+        }
+        function rgbToHsv(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+            let h = 0;
+            if (d !== 0) {
+                if (max === r) h = 60 * (((g - b) / d) % 6);
+                else if (max === g) h = 60 * ((b - r) / d + 2);
+                else h = 60 * ((r - g) / d + 4);
+            }
+            if (h < 0) h += 360;
+            return [h, max === 0 ? 0 : d / max, max];
+        }
+        function rgbToHex(r, g, b) { return '#' + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join(''); }
+        function hexToRgb(hex) { return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]; }
+
+        // Builds the gradient-square + hue-strip + RGB/hex editor for redefining a theme
+        // color's base hue. The two input methods (dragging the gradient, typing RGB/hex)
+        // stay synchronized: moving the picker updates the RGB/hex fields, and editing the
+        // fields moves the picker, because both read/write the same shared {h,s,v} state.
+        function buildThemeColorEditor(themeIndex, onClose) {
+            const wrap = document.createElement('div');
+            wrap.className = 'theme-editor';
+
+            let [h, s, v] = rgbToHsv(...hexToRgb(themePalette[themeIndex]));
+
+            wrap.innerHTML = `
+                <div class="theme-editor-header">
+                    <button type="button" class="theme-editor-back" title="Back to palette">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span>Edit theme color ${themeIndex + 1}</span>
+                </div>
+                <div class="sv-square">
+                    <div class="sv-white-layer"></div>
+                    <div class="sv-black-layer"></div>
+                    <div class="sv-cursor"></div>
+                </div>
+                <div class="hue-strip"><div class="hue-cursor"></div></div>
+                <div class="rgb-row">
+                    <div class="rgb-field"><label>R</label><input type="number" min="0" max="255" class="rgb-r"></div>
+                    <div class="rgb-field"><label>G</label><input type="number" min="0" max="255" class="rgb-g"></div>
+                    <div class="rgb-field"><label>B</label><input type="number" min="0" max="255" class="rgb-b"></div>
+                </div>
+                <div class="hex-row">
+                    <div class="hex-preview"></div>
+                    <input type="text" class="hex-field" spellcheck="false" maxlength="7">
+                </div>
+            `;
+
+            const svSquare = wrap.querySelector('.sv-square');
+            const svCursor = wrap.querySelector('.sv-cursor');
+            const hueStrip = wrap.querySelector('.hue-strip');
+            const hueCursor = wrap.querySelector('.hue-cursor');
+            const rInput = wrap.querySelector('.rgb-r');
+            const gInput = wrap.querySelector('.rgb-g');
+            const bInput = wrap.querySelector('.rgb-b');
+            const hexInput = wrap.querySelector('.hex-field');
+            const hexPreview = wrap.querySelector('.hex-preview');
+
+            function applyAndRerender() {
+                const newHex = rgbToHex(...hsvToRgb(h, s, v));
+                themePalette[themeIndex] = newHex;
+                saveToLocalStorage();
+                generateDiagram();
+                renderNodes();
+                if (colorPickerOnThemeChange) colorPickerOnThemeChange();
+            }
+
+            function render() {
+                const [r, g, b] = hsvToRgb(h, s, v);
+                const hex = rgbToHex(r, g, b);
+                svSquare.style.backgroundColor = `hsl(${h}, 100%, 50%)`;
+                svCursor.style.left = (s * 100) + '%';
+                svCursor.style.top = ((1 - v) * 100) + '%';
+                hueCursor.style.left = (h / 360 * 100) + '%';
+                rInput.value = r; gInput.value = g; bInput.value = b;
+                hexInput.value = hex.toUpperCase();
+                hexPreview.style.background = hex;
+            }
+
+            let draggingSV = false;
+            const eventPoint = (e) => e.touches && e.touches.length ? e.touches[0] : e;
+            const updateSV = (e) => {
+                const pt = eventPoint(e);
+                const rect = svSquare.getBoundingClientRect();
+                s = Math.max(0, Math.min(1, (pt.clientX - rect.left) / rect.width));
+                v = Math.max(0, Math.min(1, 1 - (pt.clientY - rect.top) / rect.height));
+                render(); applyAndRerender();
+            };
+            svSquare.addEventListener('mousedown', e => { draggingSV = true; updateSV(e); });
+            window.addEventListener('mousemove', e => { if (draggingSV) updateSV(e); });
+            window.addEventListener('mouseup', () => draggingSV = false);
+            svSquare.addEventListener('touchstart', e => { draggingSV = true; updateSV(e); e.preventDefault(); }, { passive: false });
+            window.addEventListener('touchmove', e => { if (draggingSV) { updateSV(e); e.preventDefault(); } }, { passive: false });
+            window.addEventListener('touchend', () => draggingSV = false);
+
+            let draggingHue = false;
+            const updateHue = (e) => {
+                const pt = eventPoint(e);
+                const rect = hueStrip.getBoundingClientRect();
+                h = Math.max(0, Math.min(360, (pt.clientX - rect.left) / rect.width * 360));
+                render(); applyAndRerender();
+            };
+            hueStrip.addEventListener('mousedown', e => { draggingHue = true; updateHue(e); });
+            window.addEventListener('mousemove', e => { if (draggingHue) updateHue(e); });
+            window.addEventListener('mouseup', () => draggingHue = false);
+            hueStrip.addEventListener('touchstart', e => { draggingHue = true; updateHue(e); e.preventDefault(); }, { passive: false });
+            window.addEventListener('touchmove', e => { if (draggingHue) { updateHue(e); e.preventDefault(); } }, { passive: false });
+            window.addEventListener('touchend', () => draggingHue = false);
+
+            [rInput, gInput, bInput].forEach(inp => {
+                inp.addEventListener('input', () => {
+                    const r = Math.max(0, Math.min(255, +rInput.value || 0));
+                    const g = Math.max(0, Math.min(255, +gInput.value || 0));
+                    const b = Math.max(0, Math.min(255, +bInput.value || 0));
+                    [h, s, v] = rgbToHsv(r, g, b);
+                    render(); applyAndRerender();
+                });
+            });
+            hexInput.addEventListener('change', () => {
+                const val = hexInput.value.trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                    [h, s, v] = rgbToHsv(...hexToRgb(val));
+                    render(); applyAndRerender();
+                }
+            });
+
+            wrap.querySelector('.theme-editor-back').addEventListener('click', onClose);
+
+            render();
+            return wrap;
+        }
+
+        // Main palette grid: each theme color shown as a column with its full tint/base/
+        // shade run (exact Office percentages — see THEME_TINT_PERCENTS/THEME_SHADE_PERCENTS
+        // above), click any cell to select that exact variant for the node. A small pencil
+        // affordance on the base-row cell opens buildThemeColorEditor() for that theme slot,
+        // letting the user redefine the underlying hue; every node referencing that theme
+        // index (at any variant) updates automatically since colors are resolved live.
+        function buildColorPopover(currentRef, onSelect) {
             const pop = document.createElement('div');
             pop.className = 'color-popover';
 
-            const label = document.createElement('div');
-            label.className = 'color-popover-label';
-            label.textContent = 'Palette';
-            pop.appendChild(label);
+            function showGrid() {
+                pop.innerHTML = '';
+                const label = document.createElement('div');
+                label.className = 'color-popover-label';
+                label.textContent = 'Theme palette';
+                pop.appendChild(label);
 
-            function makeCell(hex, isBase) {
-                const cell = document.createElement('div');
-                cell.className = 'color-swatch-cell' + (hex.toLowerCase() === (currentColor || '').toLowerCase() ? ' is-selected' : '');
-                cell.style.background = hex;
-                if (isBase) cell.style.boxShadow = 'inset 0 0 0 1px rgba(28,33,39,0.12)';
-                cell.title = hex;
-                cell.onclick = () => { onSelect(hex); closeColorPicker(); };
-                return cell;
+                function makeCell(themeIndex, variant, isBase) {
+                    const hex = deriveVariant(themePalette[themeIndex], variant);
+                    const cell = document.createElement('div');
+                    const isSelected = currentRef && currentRef.themeIndex === themeIndex && (currentRef.variant || 'base') === variant;
+                    cell.className = 'color-swatch-cell' + (isSelected ? ' is-selected' : '');
+                    cell.style.background = hex;
+                    if (isBase) cell.style.boxShadow = 'inset 0 0 0 1px rgba(28,33,39,0.12)';
+                    cell.title = hex;
+                    cell.onclick = () => { onSelect({ themeIndex, variant }); closeColorPicker(); };
+                    if (isBase) {
+                        const pencil = document.createElement('div');
+                        pencil.className = 'color-swatch-edit-affordance';
+                        pencil.innerHTML = '<i class="fa-solid fa-pencil"></i>';
+                        pencil.title = 'Edit this theme color';
+                        pencil.onclick = (e) => {
+                            e.stopPropagation();
+                            pop.innerHTML = '';
+                            pop.appendChild(buildThemeColorEditor(themeIndex, showGrid));
+                        };
+                        cell.appendChild(pencil);
+                    }
+                    return cell;
+                }
+
+                // Lightest tints first (tint4 = 80% lighter) down to base, then shades.
+                for (let i = 4; i >= 0; i--) {
+                    const row = document.createElement('div');
+                    row.className = 'color-popover-row';
+                    themePalette.forEach((_, themeIndex) => row.appendChild(makeCell(themeIndex, `tint${i}`, false)));
+                    pop.appendChild(row);
+                }
+                const baseRow = document.createElement('div');
+                baseRow.className = 'color-popover-row is-base-row';
+                themePalette.forEach((_, themeIndex) => baseRow.appendChild(makeCell(themeIndex, 'base', true)));
+                pop.appendChild(baseRow);
+                for (let i = 0; i < 2; i++) {
+                    const row = document.createElement('div');
+                    row.className = 'color-popover-row';
+                    themePalette.forEach((_, themeIndex) => row.appendChild(makeCell(themeIndex, `shade${i}`, false)));
+                    pop.appendChild(row);
+                }
+
+                const hint = document.createElement('div');
+                hint.className = 'color-popover-hint';
+                hint.innerHTML = 'Hover a base color for <i class="fa-solid fa-pencil"></i> to edit the theme';
+                pop.appendChild(hint);
             }
 
-            [...SWATCH_TINTS].reverse().forEach(t => {
-                const row = document.createElement('div');
-                row.className = 'color-popover-row';
-                SWATCH_CORE_HUES.forEach(hue => row.appendChild(makeCell(shadeHue(hue, t), false)));
-                pop.appendChild(row);
-            });
-
-            const baseRow = document.createElement('div');
-            baseRow.className = 'color-popover-row is-base-row';
-            SWATCH_CORE_HUES.forEach(hue => baseRow.appendChild(makeCell(hue, true)));
-            pop.appendChild(baseRow);
-
-            SWATCH_SHADES.forEach(t => {
-                const row = document.createElement('div');
-                row.className = 'color-popover-row';
-                SWATCH_CORE_HUES.forEach(hue => row.appendChild(makeCell(shadeHue(hue, t), false)));
-                pop.appendChild(row);
-            });
-
-            const customRow = document.createElement('div');
-            customRow.className = 'color-popover-custom';
-            customRow.innerHTML = `
-                <div class="custom-swatch-input-wrap">
-                    <input type="color" value="${currentColor || '#7c8694'}">
-                </div>
-                <input type="text" value="${(currentColor || '#7c8694').toUpperCase()}" spellcheck="false" maxlength="7">
-            `;
-            const customColorInput = customRow.querySelector('input[type="color"]');
-            const customTextInput = customRow.querySelector('input[type="text"]');
-            customColorInput.addEventListener('input', () => {
-                customTextInput.value = customColorInput.value.toUpperCase();
-                onSelect(customColorInput.value);
-            });
-            customTextInput.addEventListener('change', () => {
-                const v = customTextInput.value.trim();
-                if (/^#[0-9a-fA-F]{6}$/.test(v)) { customColorInput.value = v; onSelect(v); closeColorPicker(); }
-            });
-            pop.appendChild(customRow);
-
+            showGrid();
             return pop;
         }
 
         function openColorPickerFor(triggerEl, nodeIndex) {
-            openColorPicker(triggerEl, nodes[nodeIndex].color, (hex) => updateNodeColor(nodeIndex, hex));
+            colorPickerOnThemeChange = () => {
+                triggerEl.style.background = resolveThemeColor(nodes[nodeIndex].color);
+            };
+            openColorPicker(triggerEl, nodes[nodeIndex].color, (ref) => updateNodeColor(nodeIndex, ref));
         }
 
-        function openColorPicker(triggerEl, currentColor, onSelect) {
+        function openColorPicker(triggerEl, currentRef, onSelect) {
             closeColorPicker();
-            const pop = buildColorPopover(currentColor, (hex) => {
-                triggerEl.style.background = hex;
-                onSelect(hex);
+            const pop = buildColorPopover(currentRef, (ref) => {
+                triggerEl.style.background = resolveThemeColor(ref);
+                onSelect(ref);
             });
             document.body.appendChild(pop);
 
             const rect = triggerEl.getBoundingClientRect();
-            const popWidth = 200;
+            const popWidth = 220;
             let left = rect.left + window.scrollX;
             if (left + popWidth > window.innerWidth - 12) left = window.innerWidth - popWidth - 12;
             pop.style.left = left + 'px';
@@ -549,9 +771,9 @@
         }
 
         function addNode() {
-            const premiumPalette = ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'];
-            const chosenColor = premiumPalette[nodes.length % premiumPalette.length];
-            nodes.push({ name: `Node ${nodes.length + 1}`, color: chosenColor });
+            const themeOrder = [2, 3, 4, 5, 6, 7, 0, 1]; // start from the accent hues, neutrals last
+            const themeIndex = themeOrder[nodes.length % themeOrder.length];
+            nodes.push({ name: `Node ${nodes.length + 1}`, color: { themeIndex, variant: 'base' } });
             renderNodes();
             saveToLocalStorage();
             generateDiagram();
@@ -747,16 +969,16 @@
             return 'neutral';
         }
 
-        function resolveNodeColor(name, explicitColor) {
-            if (paletteMode === 'branded') return explicitColor || 'var(--sk-neutral-node)';
+        function resolveNodeColor(name, explicitColorRef) {
+            if (paletteMode === 'branded') return explicitColorRef ? resolveThemeColor(explicitColorRef) : 'var(--sk-neutral-node)';
             const role = semanticRole(name);
             if (role === 'profit') return 'var(--sk-accent-profit)';
             if (role === 'cost') return 'var(--sk-accent-cost)';
             return 'var(--sk-neutral-node)';
         }
 
-        function resolveRibbonColor(targetName, targetExplicitColor) {
-            if (paletteMode === 'branded') return targetExplicitColor || 'var(--sk-neutral-ribbon)';
+        function resolveRibbonColor(targetName, targetExplicitColorRef) {
+            if (paletteMode === 'branded') return targetExplicitColorRef ? resolveThemeColor(targetExplicitColorRef) : 'var(--sk-neutral-ribbon)';
             const role = semanticRole(targetName);
             if (role === 'profit') return 'var(--sk-accent-profit)';
             if (role === 'cost') return 'var(--sk-accent-cost)';
@@ -804,18 +1026,96 @@
             }
 
             // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
-            const labelFont = '600 12.5px Inter, system-ui, sans-serif';
-            const valueFont = '700 11.5px Inter, system-ui, sans-serif';
-            const headlineFont = '600 16px Space Grotesk, Inter, sans-serif';
+            // Label font scales down (floored for legibility) when the container is narrow,
+            // rather than letting leftMargin/rightMargin grow to fit full-size text regardless
+            // of available width — that was the actual cause of the diagram's plot area being
+            // squeezed to a fraction of the canvas on narrow viewports: margins sized for
+            // 12.5px label text could consume most of the width before the ribbons got any
+            // room at all. maxMarginEach is a TARGET the font-shrink tries to hit, not a hard
+            // ceiling on the margin itself — if even the floored font size still doesn't fit
+            // (e.g. "Wearables & Home" on a very narrow phone), the margin grows to actually
+            // fit the text rather than clamping and silently letting the label run off the
+            // canvas edge. An earlier version of this fix capped the margin unconditionally,
+            // which fixed the width-fill problem but introduced real label clipping ("Wearables
+            // & Home" rendering as "rables & Home") — confirmed via rendered screenshot, not
+            // theoretical. Legibility always wins; the width target is a best-effort, not a
+            // guarantee.
+            const containerRectForSizing = container.getBoundingClientRect();
+            const availableWForLabels = containerRectForSizing.width || 900;
+            const maxMarginEach = Math.max(70, availableWForLabels * 0.32);
 
+            function measureLongest(names, font) {
+                return Math.max(0, ...names.map(n => Math.max(
+                    measureTextWidth(n, font), measureTextWidth(formatFlowValue(nodeValue(n)), valueFontFor(font))
+                )));
+            }
+            function valueFontFor(labelFontStr) {
+                const sizeMatch = labelFontStr.match(/(\d+(?:\.\d+)?)px/);
+                const size = sizeMatch ? parseFloat(sizeMatch[1]) - 1 : 11.5;
+                return `700 ${size}px Inter, system-ui, sans-serif`;
+            }
+
+            const baseLabelSize = 12.5;
+            let labelFontSize = baseLabelSize;
             const leftNames = colNodeNames[0];
             const rightNames = colNodeNames[numCols - 1];
-            const widestLeft = Math.max(0, ...leftNames.map(n => Math.max(
-                measureTextWidth(n, labelFont), measureTextWidth(formatFlowValue(nodeValue(n)), valueFont)
-            )));
-            const widestRight = Math.max(0, ...rightNames.map(n => Math.max(
-                measureTextWidth(n, labelFont), measureTextWidth(formatFlowValue(nodeValue(n)), valueFont)
-            )));
+            let widestLeft = measureLongest(leftNames, `600 ${labelFontSize}px Inter, system-ui, sans-serif`);
+            let widestRight = measureLongest(rightNames, `600 ${labelFontSize}px Inter, system-ui, sans-serif`);
+            const widestEither = Math.max(widestLeft, widestRight);
+            const availableForText = maxMarginEach - 40;
+            if (widestEither > availableForText && availableForText > 10) {
+                labelFontSize = Math.max(9.5, baseLabelSize * (availableForText / widestEither));
+            }
+            const valueFontSize = Math.max(8.5, labelFontSize - 1);
+            const labelFontStr = `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
+
+            // If a label is still too wide for the margin budget even at the floored font
+            // size, wrap it onto a second line (word-aware: breaks at a space, never
+            // mid-word, unless a single word alone exceeds the width) rather than either (a)
+            // truncating it — loses meaning, e.g. "Gross Margin (Profit)" becoming
+            // "Gross Ma…" — or (b) growing W past the real container width to fit it on one
+            // line, which silently shrinks the whole diagram via the width:100% global
+            // downscale (confirmed by rendering: text that looked clipped in a screenshot
+            // was actually just scaled down along with everything else, not cut off by a
+            // boundary). Wrapping keeps every word intact and keeps W honest.
+            function wrapToFit(name, maxW) {
+                if (measureTextWidth(name, labelFontStr) <= maxW) return [name];
+                const words = name.split(' ');
+                if (words.length === 1) return [name]; // single long word: nothing to break on, leave as-is
+                // Greedy two-line split: add words to line 1 until the next word would
+                // overflow, then everything else goes to line 2. If line 2 ends up empty
+                // (shouldn't happen given the length check above) fall back to one line.
+                let line1 = words[0], i = 1;
+                for (; i < words.length; i++) {
+                    const candidate = line1 + ' ' + words[i];
+                    if (measureTextWidth(candidate, labelFontStr) > maxW) break;
+                    line1 = candidate;
+                }
+                const line2 = words.slice(i).join(' ');
+                return line2 ? [line1, line2] : [name];
+            }
+            const wrappedLabel = {};
+            let leftWraps = false, rightWraps = false;
+            leftNames.forEach(n => {
+                const lines = wrapToFit(n, availableForText);
+                wrappedLabel[n] = lines;
+                if (lines.length > 1) leftWraps = true;
+            });
+            rightNames.forEach(n => {
+                const lines = wrapToFit(n, availableForText);
+                wrappedLabel[n] = lines;
+                if (lines.length > 1) rightWraps = true;
+            });
+            // Margin only needs to fit the widest LINE now (post-wrap), not the widest whole
+            // name — that's the entire point of wrapping.
+            widestLeft = Math.max(0, ...leftNames.flatMap(n => wrappedLabel[n].map(line => measureTextWidth(line, labelFontStr))));
+            widestRight = Math.max(0, ...rightNames.flatMap(n => wrappedLabel[n].map(line => measureTextWidth(line, labelFontStr))));
+
+            // Margin = whatever the (now possibly-shrunk-and-wrapped) text actually needs.
+            // No clamping against maxMarginEach here — that target already did its job by
+            // driving the font-shrink and wrap decisions above; reapplying it as a hard
+            // ceiling on top of real text measurements is what caused the earlier clipping
+            // bug (see comment history above this function for the full failure chain).
             const leftMargin = Math.ceil(widestLeft + 40);
             const rightMargin = Math.ceil(widestRight + 40);
 
@@ -828,13 +1128,15 @@
             // letterboxing or squeezing the diagram into a mismatched box. This was the actual
             // root cause of the "diagram doesn't fill the space" bug: H was previously derived
             // independently of W with no shared aspect-ratio contract with the container.
-            const containerRect = container.getBoundingClientRect();
+            const containerRect = containerRectForSizing;
             const minPlotWidth = 160; // minimum width the ribbon/column area needs to stay legible
             const W = Math.max(containerRect.width || 900, leftMargin + rightMargin + minPlotWidth);
-            const headlineH = 44;
-            const colHeaderH = 22;
-            const topPad = headlineH + colHeaderH + 14;
-            const bottomPad = 20;
+            // No headline/column-header band reserved — the diagram leads with the plot
+            // itself rather than a sentence above it (the headline was removed; see the
+            // change log for why). topPad is just enough breathing room above the tallest
+            // column so the topmost node/label doesn't touch the canvas edge.
+            const topPad = 18;
+            const bottomPad = 18;
             // H is purely content-driven (how many nodes need how much vertical room to stay
             // legible) — it does NOT try to match the container's current height, because the
             // <svg> is rendered at width:100%/height:auto, so the page's layout follows the
@@ -842,7 +1144,7 @@
             // pre-existing box. This is what actually fixes "doesn't fill the space": there's
             // no longer two independently-computed numbers (container height vs content height)
             // that can disagree and cause letterboxing.
-            const H = Math.max(360, nodeNames.length * 34 + topPad + bottomPad);
+            const H = Math.max(320, nodeNames.length * 34 + topPad + bottomPad);
             const usableH = H - topPad - bottomPad;
 
             const nodeThickness = 12;
@@ -995,7 +1297,8 @@
             // box reaching into the right column's space on a narrow viewport). Middle
             // nodes instead get a small in-place value chip directly on the node, plus
             // the full name on hover via the native <title> tooltip already attached.
-            const MIN_LABEL_GAP = 22;
+            const lineHeight = labelFontSize * 1.05;
+            const MIN_LABEL_GAP = (leftWraps || rightWraps) ? 22 + lineHeight : 22;
 
             laidOut.forEach((col, c) => {
                 const isLeftmost = c === 0;
@@ -1023,10 +1326,20 @@
                         if (!showLabel) return;
                         lastShownMidY = midY;
 
+                        const lines = wrappedLabel[n.name] || [n.name];
+                        // Vertically center the whole label-plus-value block on the node's
+                        // midpoint: name line(s) stacked above, value line below.
+                        const blockLines = lines.length + 1; // +1 for the value line
+                        const blockH = blockLines * lineHeight;
+                        let lineY = midY - blockH / 2 + lineHeight * 0.78;
+
                         svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
                         svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
-                        svg += `<text x="${textX}" y="${midY - 3}" text-anchor="${anchor}" class="sk-label-name">${escapeHtml(n.name)}</text>`;
-                        svg += `<text x="${textX}" y="${midY + 12}" text-anchor="${anchor}" class="sk-label-value">${formatFlowValue(n.value)}</text>`;
+                        lines.forEach(line => {
+                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                            lineY += lineHeight;
+                        });
+                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
                         svg += `</g>`;
                     });
                 } else {
@@ -1061,34 +1374,6 @@
                     });
                 }
             });
-
-            // ---- Headline + subhead (research: the chart states the takeaway as a sentence) ----
-            const totalThroughput = colNodeNames[0].reduce((s, n) => s + nodeValue(n), 0);
-            const profitNode = nodeNames.find(n => semanticRole(n) === 'profit');
-            let headlineText = 'Flow breakdown';
-            let subheadText = `${formatFlowValue(totalThroughput)} total, across ${nodeNames.length} nodes`;
-            if (profitNode) {
-                const profitValue = nodeValue(profitNode);
-                const pct = totalThroughput > 0 ? (profitValue / totalThroughput * 100) : 0;
-                headlineText = `${profitNode} is ${formatFlowValue(pct)}% of total throughput`;
-                subheadText = `${formatFlowValue(totalThroughput)} total in \u00b7 ${formatFlowValue(profitValue)} to ${profitNode}`;
-            }
-
-            // The headline is plain SVG text with no native wrapping, so on a narrow W it can
-            // run past the viewBox edge and get clipped. Measure it and scale the font size
-            // down (floored at a still-legible minimum) so it always fits the available width,
-            // rather than risk truncation — this is the same "measure before drawing" approach
-            // used for label margins above.
-            const headlineAvailableW = W - plotLeft - 16;
-            let headlineSize = 16;
-            const headlineWidthAt16 = measureTextWidth(headlineText, `600 16px Space Grotesk, Inter, sans-serif`);
-            if (headlineWidthAt16 > headlineAvailableW) {
-                headlineSize = Math.max(11, 16 * (headlineAvailableW / headlineWidthAt16));
-            }
-            const subheadSize = Math.max(9.5, headlineSize * 0.72);
-
-            svg += `<text x="${plotLeft}" y="${headlineSize + 8}" class="sk-headline" font-size="${headlineSize.toFixed(1)}">${escapeHtml(headlineText)}</text>`;
-            svg += `<text x="${plotLeft}" y="${headlineSize + 8 + subheadSize + 6}" class="sk-subhead" font-size="${subheadSize.toFixed(1)}">${escapeHtml(subheadText)}</text>`;
 
             container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
             chartDiv = container.querySelector('#sankey-svg');
@@ -1164,7 +1449,7 @@
         }
 
         function exportJSON() {
-            const data = { version: 1, nodes, links };
+            const data = { version: 2, nodes, links };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1174,6 +1459,15 @@
 
         function importJSON() { document.getElementById('json-file-input').click(); }
 
+        // version 2 is a deliberate breaking change from version 1: node.color used to be a
+        // literal hex string, and is now a {themeIndex, variant} reference into themePalette
+        // (so editing a theme color flows through to every node that uses it — see the
+        // Theme palette section above). A version-1 file's color values would silently
+        // misinterpret as malformed reference objects if loaded as-is, so this is rejected
+        // outright with a specific, actionable error rather than guessed at or
+        // auto-migrated. Per explicit decision: old data files are simply incompatible: the
+        // person re-exports from the old version's "Export data" (still on hex strings)
+        // and rebuilds the file, or starts fresh.
         document.getElementById('json-file-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -1182,24 +1476,34 @@
                 try {
                     const data = JSON.parse(ev.target.result);
                     if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
+                    if (data.version !== 2) {
+                        throw new Error("This data file is from an older, incompatible version of the app (node colors used to be plain hex codes; they're now theme palette references). Please re-create or re-export this file in the current version.");
+                    }
+                    const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
+                    if (!colorRefShapeOk) {
+                        throw new Error("This data file's node colors aren't in the expected theme-reference format. Please re-create or re-export this file in the current version.");
+                    }
                     nodes = data.nodes; links = data.links;
                     renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
-                } catch (err) { alert("Parsing Exception: " + err.message); }
+                } catch (err) { alert("Couldn't load this file: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
         });
 
-        function exportBranding() {
-            if (nodes.length === 0) return alert("Populate target system nodes to export profiles.");
-            const brandingMap = nodes.map(n => ({ name: n.name, color: n.color }));
-            const blob = new Blob([JSON.stringify({ brandingProfile: brandingMap }, null, 2)], { type: 'application/json' });
+        // "Theme" file: just the 8 base palette colors (system default, or whatever the
+        // person has customized via the gradient/RGB editor), independent of any node data.
+        // This is what flows through to every node's color automatically when loaded —
+        // node data files reference theme slots by index, not by literal color, so loading
+        // a new theme re-colors the whole diagram without touching node/flow data at all.
+        function exportTheme() {
+            const blob = new Blob([JSON.stringify({ themeVersion: 1, themePalette }, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `sankey_branding.json`;
+            a.href = url; a.download = `sankey_theme.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
-        function importBranding() { document.getElementById('branding-file-input').click(); }
+        function importTheme() { document.getElementById('branding-file-input').click(); }
 
         document.getElementById('branding-file-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -1208,15 +1512,14 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.brandingProfile) throw new Error("Invalid signature layout array.");
-                    
-                    data.brandingProfile.forEach(profile => {
-                        const targetNode = nodes.find(n => n.name.toLowerCase() === profile.name.toLowerCase());
-                        if (targetNode) targetNode.color = profile.color;
-                    });
-                    
-                    renderNodes(); saveToLocalStorage(); generateDiagram();
-                } catch (err) { alert("Branding Load Exception: " + err.message); }
+                    if (!Array.isArray(data.themePalette) || data.themePalette.length !== 8) {
+                        throw new Error("Expected a theme file with 8 palette colors.");
+                    }
+                    const allValidHex = data.themePalette.every(c => /^#[0-9a-fA-F]{6}$/.test(c));
+                    if (!allValidHex) throw new Error("Theme file contains an invalid color value.");
+                    themePalette = data.themePalette;
+                    saveToLocalStorage(); renderNodes(); generateDiagram();
+                } catch (err) { alert("Couldn't load this theme: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
         });
@@ -1269,11 +1572,8 @@
             const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
             styleEl.textContent = `
                 .sk-leader { stroke: #c7c2b8; stroke-width: 1px; }
-                .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 12.5px; fill: #1c2127; letter-spacing: -0.006em; }
-                .sk-label-value { font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; font-size: 11.5px; fill: #1c2127; }
-                .sk-col-header { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: 0.06em; fill: #767f8c; }
-                .sk-headline { font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 600; fill: #1c2127; }
-                .sk-subhead { font-family: Inter, system-ui, sans-serif; font-weight: 500; fill: #767f8c; }
+                .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; fill: #1c2127; letter-spacing: -0.006em; }
+                .sk-label-value { font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; fill: #1c2127; }
             `;
             clone.insertBefore(styleEl, clone.firstChild);
 
@@ -1306,15 +1606,15 @@
 
         function loadDefaultExample() {
             nodes = [
-                { name: "iPhone", color: "#1c1c1e" },
-                { name: "Mac", color: "#94a3b8" },
-                { name: "iPad", color: "#0ea5e9" },
-                { name: "Wearables & Home", color: "#f59e0b" },
-                { name: "Services", color: "#8b5cf6" },
-                { name: "Direct Channel (Retail/Web)", color: "#3b82f6" },
-                { name: "Indirect Channel (Carriers)", color: "#64748b" },
-                { name: "Gross Margin (Profit)", color: "#10b981" },
-                { name: "Cost of Sales", color: "#ef4444" }
+                { name: "iPhone", color: { themeIndex: 0, variant: 'base' } },
+                { name: "Mac", color: { themeIndex: 1, variant: 'base' } },
+                { name: "iPad", color: { themeIndex: 4, variant: 'base' } },
+                { name: "Wearables & Home", color: { themeIndex: 6, variant: 'base' } },
+                { name: "Services", color: { themeIndex: 5, variant: 'base' } },
+                { name: "Direct Channel (Retail/Web)", color: { themeIndex: 4, variant: 'shade0' } },
+                { name: "Indirect Channel (Carriers)", color: { themeIndex: 1, variant: 'shade0' } },
+                { name: "Gross Margin (Profit)", color: { themeIndex: 3, variant: 'base' } },
+                { name: "Cost of Sales", color: { themeIndex: 2, variant: 'base' } }
             ];
 
             links = [

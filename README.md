@@ -590,10 +590,26 @@ in landscape (a phone in landscape is typically ~650-950px wide) — without
 an intermediate tier, rotating a phone produced a taller scroll of the
 exact same narrow single-column layout, confirmed by rendering before the
 fix and seeing zero layout change between portrait and landscape. The
-three tiers: default/narrow stacks everything in one column; 700px+ pairs
-Nodes+Flows into a left column and gives Diagram a genuinely wide right
-column (this is the tier that makes landscape actually worth rotating to);
-1024px+ is the original three-way split.
+three tiers: default/narrow stacks everything in one column; 700px+ puts
+Nodes top-left and Flows top-right (each a real half-width column, since
+the row only splits two ways), with Diagram spanning the FULL width
+underneath, across both columns — this is the tier that makes landscape
+actually worth rotating to, specifically because Diagram gets the entire
+available width rather than sharing it with another column; 1024px+ is
+the original three-way split, Nodes/Flows/Diagram side by side.
+
+**The 700px tier went through two shapes.** The first version gave
+Diagram a tall right-hand column next to a narrower Nodes+Flows left
+column — this technically gave Diagram more room than portrait, but
+nowhere near full width, and was reported as not feeling like real
+widening at all on a real device, alongside a separate real bug (the
+Flows table overflowing its narrower column). The current top-left/
+top-right/full-width-bottom shape, requested directly, fixes both: Nodes
+and Flows each get a comfortable real half-width column (no longer
+squeezed into a narrow shared sidebar), and Diagram gets the full grid
+width to render into, confirmed by direct measurement
+(`diagramColRect.width` matching the full grid width, and the SVG's own
+`viewBox` width landing close to that full width, not a fraction of it).
 
 A CSS layout change alone isn't sufficient, though — `generateDiagram()`
 only measures its container and redraws when it's called, and previously
@@ -802,7 +818,7 @@ the `table-layout: fixed` fix without this).
   plus confirming a single normal data edit still triggers exactly one
   `generateDiagram()` call so the new observer isn't causing redundant
   redraws.
-- **V8 (current):** V7's rotation fix did not actually work on a real
+- **V8:** V7's rotation fix did not actually work on a real
   phone, despite passing every test in this project's desktop-Chromium
   testing methodology — reported directly by the person testing on their
   own device: the grid correctly reflowed to two columns on rotation, but
@@ -822,6 +838,22 @@ the `table-layout: fixed` fix without this).
   on `.field-select`. This entry exists specifically to record that a
   "verified" fix in V7 was not actually correct, and why — see the
   closing guidance below.
+- **V9 (current):** The clipping from V8 was gone, but the diagram still
+  didn't feel like it was actually widening on rotation — also reported
+  directly, with an exact specification of the desired landscape shape:
+  Nodes top-left, Flows top-right, Diagram (with its controls) spanning
+  the full width across the bottom. The previous 700px tier's shape (a
+  narrow Nodes+Flows left column next to a Diagram right column) was the
+  root cause: Diagram was getting *more* room than portrait, but was
+  still constrained to sharing the row with another column rather than
+  claiming the full width, so the improvement was real but unconvincing.
+  Replaced with the requested shape — `grid-template-areas: "nodes
+  flows" "diagram diagram"` — confirmed by direct measurement that
+  Diagram's grid area now spans the full row width and the rendered SVG's
+  `viewBox` width lands close to that full width rather than a fraction
+  of it, both on direct load at landscape width and via live resize
+  (simulating an actual rotation on an already-loaded page, not a fresh
+  load at a different viewport).
 
 ## If you're picking this up fresh
 

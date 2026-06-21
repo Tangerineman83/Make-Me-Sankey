@@ -398,6 +398,18 @@
                             <button id="palette-restrained-btn" onclick="setPaletteMode('restrained')" class="pill-toggle-btn">Restrained</button>
                             <button id="palette-branded-btn" onclick="setPaletteMode('branded')" class="pill-toggle-btn">Branded</button>
                         </div>
+                        <select id="system-theme-select" class="field-select" style="width:auto; padding-right:24px;"
+                                onchange="applySystemTheme(this.value)" title="Preset color theme for node/ribbon colors">
+                            <option value="Default">Theme: Default</option>
+                            <option value="Neon">Theme: Neon</option>
+                            <option value="Natural">Theme: Natural</option>
+                            <option value="Spring">Theme: Spring</option>
+                            <option value="Summer">Theme: Summer</option>
+                            <option value="Autumn">Theme: Autumn</option>
+                            <option value="Winter">Theme: Winter</option>
+                            <option value="Industrial">Theme: Industrial</option>
+                            <option value="__custom__" disabled>Theme: Custom</option>
+                        </select>
                         <div class="pill-toggle-group">
                             <button id="style-standard-btn" onclick="setRibbonStyle('standard')" class="pill-toggle-btn">Standard</button>
                             <button id="style-classic-btn" onclick="setRibbonStyle('classic')" class="pill-toggle-btn">Classic</button>
@@ -449,6 +461,65 @@
         // 2-7 are the working accent hues.
         let themePalette = ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'];
 
+        // System theme presets: ready-made 8-color palettes a person can switch to as a
+        // starting point, then still customize individual slots afterward via the gradient/
+        // RGB editor (picking a preset is not a one-way door — it just sets themePalette to
+        // a new starting array, identical in every way to a person manually re-typing 8 hex
+        // values). Each preset follows the SAME structural role per slot as the original
+        // default, deliberately: slot 0 is always a near-black/darkest "ink" neutral, slot 1
+        // a mid-tone neutral, slots 2-7 are the working accent hues. This matters because
+        // Restrained mode's semantic coloring (profit=green-ish, cost=red/warm-ish) reads
+        // best when slot 2/3 stay roughly in that family across themes — Branded mode
+        // ignores this entirely and just uses whatever 8 colors are assigned, so it's a soft
+        // convention for Restrained-mode legibility, not a hard requirement.
+        //
+        // Winter and Industrial each went through one real revision before being finalized:
+        // initial drafts had 3-4 colors per palette that were too close in hue/lightness to
+        // tell apart at a glance in an actual diagram (several blue-greys in Winter reading
+        // as near-identical, several muted earth tones in Industrial doing the same) —
+        // caught by rendering actual swatch grids side by side, not by eye on individual
+        // hex values, and revised for real visual separation before being finalized here.
+        const SYSTEM_THEMES = {
+            'Default': ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'],
+            'Neon': ['#0a0014', '#5b5b7a', '#ff2e88', '#00f5a0', '#7c3aff', '#00d4ff', '#ffb800', '#ff5ee8'],
+            'Natural': ['#2e2a22', '#8c8273', '#a8553a', '#5c7a4f', '#3d6b6b', '#8a9b4f', '#c19a4b', '#6b8e8e'],
+            'Spring': ['#3a3530', '#a39c8f', '#e8889a', '#7fb069', '#f4a896', '#9bc4cc', '#f7d486', '#c9a8d4'],
+            'Summer': ['#2b2419', '#a39477', '#e8542e', '#2e8b57', '#2196c4', '#f4c430', '#ff7f50', '#1ba39c'],
+            'Autumn': ['#2e1f17', '#9c8773', '#c1440e', '#8a6d2f', '#a85c32', '#6b4226', '#d4943b', '#7a4419'],
+            'Winter': ['#0f1f2e', '#7793a8', '#3a6ea5', '#8fb8d6', '#1e4d6b', '#c4d8e8', '#5b4e8a', '#2e7d8c'],
+            'Industrial': ['#1a1a1a', '#8a8a8a', '#b8451f', '#5a6e2e', '#2e4a5c', '#c9a04a', '#4a4a4a', '#9b6b3f'],
+        };
+
+        function applySystemTheme(themeName) {
+            const preset = SYSTEM_THEMES[themeName];
+            if (!preset) return;
+            themePalette = [...preset];
+            saveToLocalStorage();
+            renderNodes();
+            generateDiagram();
+            syncSystemThemeSelect();
+        }
+
+        // The <select> should reflect reality: if every slot in themePalette currently
+        // matches a preset exactly, show that preset selected; if the person has since
+        // edited any individual color away from the preset they started from, show
+        // "Custom" rather than leaving a stale preset name selected that no longer
+        // accurately describes the palette.
+        function detectCurrentSystemTheme() {
+            for (const [name, preset] of Object.entries(SYSTEM_THEMES)) {
+                if (preset.every((hex, i) => hex.toLowerCase() === (themePalette[i] || '').toLowerCase())) {
+                    return name;
+                }
+            }
+            return null;
+        }
+
+        function syncSystemThemeSelect() {
+            const select = document.getElementById('system-theme-select');
+            if (!select) return;
+            const detected = detectCurrentSystemTheme();
+            select.value = detected || '__custom__';
+        }
         // Exact Microsoft Office picker percentages (not arbitrary mix amounts). Lighter
         // tints move the base color toward white by this fraction; darker shades move it
         // toward black. Order here is darkest-tint-first only because that's the order the
@@ -656,6 +727,7 @@
                 saveToLocalStorage();
                 generateDiagram();
                 renderNodes();
+                syncSystemThemeSelect();
                 if (colorPickerOnThemeChange) colorPickerOnThemeChange();
             }
 
@@ -1567,7 +1639,7 @@
                     const allValidHex = data.themePalette.every(c => /^#[0-9a-fA-F]{6}$/.test(c));
                     if (!allValidHex) throw new Error("Theme file contains an invalid color value.");
                     themePalette = data.themePalette;
-                    saveToLocalStorage(); renderNodes(); generateDiagram();
+                    saveToLocalStorage(); renderNodes(); generateDiagram(); syncSystemThemeSelect();
                 } catch (err) { alert("Couldn't load this theme: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
@@ -1755,6 +1827,7 @@
             document.getElementById('style-standard-btn').classList.toggle('is-active', ribbonStyle === 'standard');
             document.getElementById('style-classic-btn').classList.toggle('is-active', ribbonStyle === 'classic');
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
+            syncSystemThemeSelect();
             
             if (nodes.length === 0) {
                 loadDefaultExample();

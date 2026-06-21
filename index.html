@@ -63,8 +63,9 @@
         .field-input:focus { outline: none; border-color: #c7c2b3; background: #fff; }
 
         .field-select {
-            width: 100%; border: 1px solid #e7e3d8; border-radius: 8px;
+            width: 100%; min-width: 0; border: 1px solid #e7e3d8; border-radius: 8px;
             padding: 6px 8px; font-size: 12px; font-weight: 500; color: #1c2127; background: #fff;
+            box-sizing: border-box;
         }
         .field-select:focus { outline: none; border-color: #9a9484; }
 
@@ -364,12 +365,12 @@
                     </button>
                 </div>
                 <div class="p-2.5 flex-1 overflow-x-auto">
-                    <table class="w-full text-xs min-w-[340px] border-separate" style="border-spacing: 0 1px;">
+                    <table class="w-full text-xs border-separate" style="border-spacing: 0 1px; table-layout: fixed;">
                         <thead class="text-[#9a9484] font-semibold uppercase tracking-wider">
                             <tr>
                                 <th class="px-2 py-1.5 text-left text-[10px]">From</th>
                                 <th class="px-2 py-1.5 text-left text-[10px]">To</th>
-                                <th class="px-2 py-1.5 text-left text-[10px] w-20">Value</th>
+                                <th class="px-2 py-1.5 text-left text-[10px] w-16">Value</th>
                                 <th class="w-8"></th>
                             </tr>
                         </thead>
@@ -1684,36 +1685,57 @@
         // chrome show/hide) rather than only on the next data edit. Without this, the
         // layout-tier CSS change above would only "work" the next time someone happened to
         // add or edit something — rotating the device wouldn't visibly do anything until
-        // then, which defeats the purpose. ResizeObserver (not a plain window 'resize'
-        // listener) specifically watches the diagram's own container box, so it fires
-        // exactly when the space actually available to the SVG changes, regardless of what
-        // caused that — orientation change, the three-tier grid above switching columns at
-        // 700px/1024px, or anything else. Debounced via rAF-style timeout since rotation
-        // can fire several intermediate resize events in quick succession and there's no
-        // value in redrawing the full SVG for each one.
+        // then, which defeats the purpose.
+        //
+        // This uses THREE overlapping signals rather than relying on any single one:
+        // window 'resize', 'orientationchange', and ResizeObserver on the canvas shell.
+        // This redundancy is deliberate, not accidental belt-and-suspenders: an earlier
+        // version used ResizeObserver alone, verified working in desktop-Chromium viewport
+        // resize tests, but confirmed NOT working on a real phone (diagram stayed exactly
+        // the same width after a real rotation, even though the surrounding CSS grid did
+        // correctly switch to its two-column layout). The grid reflowing but the SVG not
+        // redrawing points at the resize signal itself failing to fire or firing with a
+        // stale width on at least one real mobile browser engine — desktop-emulated
+        // viewport resize in a testing tool is not proof a real device's rotation event
+        // sequence behaves the same way. 'orientationchange' and 'resize' are the two most
+        // universally-supported cross-browser signals for this and don't depend on
+        // ResizeObserver semantics at all, so they're included even though ResizeObserver
+        // alone "should" cover the same cases in theory.
+        //
+        // Debounce is longer (250ms, was 120ms) because real mobile browsers can report an
+        // intermediate/incorrect viewport size for a brief moment immediately after
+        // rotation, before settling on the final post-rotation layout — redrawing too early
+        // risks measuring that transient incorrect width. The redraw also re-reads the
+        // container's width fresh at fire time (inside generateDiagram() itself), not from
+        // any cached value captured when the resize started.
         let resizeRedrawTimer = null;
         function scheduleResizeRedraw() {
             if (resizeRedrawTimer) clearTimeout(resizeRedrawTimer);
             resizeRedrawTimer = setTimeout(() => {
                 resizeRedrawTimer = null;
                 if (nodes.length && links.length) generateDiagram();
-            }, 120);
+            }, 250);
         }
-        function initResizeObserver() {
+
+        function initResizeHandling() {
+            window.addEventListener('resize', scheduleResizeRedraw);
+            window.addEventListener('orientationchange', scheduleResizeRedraw);
+
             const shell = document.getElementById('sankey-canvas-shell');
-            if (!shell || typeof ResizeObserver === 'undefined') return;
-            let lastWidth = shell.getBoundingClientRect().width;
-            const observer = new ResizeObserver(entries => {
-                const newWidth = entries[0].contentRect.width;
-                // Only redraw on an actual width change, not every observer callback —
-                // generateDiagram() itself replaces the shell's children, which can fire a
-                // spurious observation; comparing widths avoids a feedback loop.
-                if (Math.abs(newWidth - lastWidth) > 1) {
-                    lastWidth = newWidth;
-                    scheduleResizeRedraw();
-                }
-            });
-            observer.observe(shell);
+            if (shell && typeof ResizeObserver !== 'undefined') {
+                let lastWidth = shell.getBoundingClientRect().width;
+                const observer = new ResizeObserver(entries => {
+                    const newWidth = entries[0].contentRect.width;
+                    // Only schedule on an actual width change, not every observer callback —
+                    // generateDiagram() itself replaces the shell's children, which can fire
+                    // a spurious observation; comparing widths avoids a feedback loop.
+                    if (Math.abs(newWidth - lastWidth) > 1) {
+                        lastWidth = newWidth;
+                        scheduleResizeRedraw();
+                    }
+                });
+                observer.observe(shell);
+            }
         }
 
         window.onload = function() {
@@ -1736,7 +1758,7 @@
                 generateDiagram();
             }
 
-            initResizeObserver();
+            initResizeHandling();
         };
     </script>
 </body>

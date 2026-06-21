@@ -580,6 +580,55 @@ much smaller **theme JSON** (`exportTheme()`/`importTheme()`,
 nodes at all), reflecting the new separation between theme (system/app
 level) and node-to-slot assignment (per-diagram data).
 
+### System theme presets
+
+A `<select id="system-theme-select">` in the Diagram panel's control strip
+(between the Restrained/Branded toggle and the Standard/Classic/Modern
+toggle) lets a person switch `themePalette` wholesale to one of several
+ready-made presets, rather than building a palette from scratch via the
+gradient/RGB editor every time. **Scope, deliberately narrow per direct
+instruction:** this affects node and ribbon colors only —
+`themePalette`, nothing else. Canvas background, ink/text color, and the
+Restrained-mode neutral/accent tokens (`--sk-canvas`, `--sk-ink`, etc.)
+are untouched by this feature entirely, and SVG export remains
+transparent-background exactly as before. "System theme" here means
+"preset starting values for the same 8-slot palette the gradient editor
+already edits," not a broader app-wide skin.
+
+`SYSTEM_THEMES` is a plain object literal mapping a name to an 8-hex-color
+array, baked into `index.html` (not loaded from anywhere by default).
+Every preset follows the same structural slot convention as the original
+default — slot 0 a near-black "ink" neutral, slot 1 a mid-tone neutral,
+slots 2-7 the working accents — specifically so Restrained mode's
+semantic coloring (which leans on roughly-red-for-cost,
+roughly-green-for-profit framing) keeps reading sensibly regardless of
+which theme is active; Branded mode ignores this convention entirely and
+just uses whichever 8 colors are assigned. The 6 presets beyond the
+original Default were proposed directly from the names requested (Neon,
+Natural, Spring, Summer, Autumn, Winter, Industrial) after the person
+shared a reference image of a neon-styled Sankey diagram for inspiration
+on that one specifically. Winter and Industrial each went through one
+real revision: initial drafts had 3-4 colors per palette too close in
+hue/lightness to tell apart at a glance in an actual rendered diagram —
+caught by rendering side-by-side swatch grids and eyeballing actual
+separation, not by inspecting hex values in isolation.
+
+`applySystemTheme(name)` replaces `themePalette` wholesale (via spread,
+not mutation of the existing array reference), then re-renders nodes and
+the diagram and persists to localStorage — identical in effect to a
+person manually re-typing all 8 hex values through the gradient editor.
+Picking a preset is explicitly not a one-way door: every individual slot
+remains editable afterward exactly as before. `detectCurrentSystemTheme()`
+checks whether every slot in the live `themePalette` matches a known
+preset exactly (case-insensitive hex compare) and `syncSystemThemeSelect()`
+sets the dropdown's displayed value accordingly, falling back to a
+disabled "Custom" option when the palette has been hand-edited away from
+any preset. This sync is called from every place `themePalette` can
+change — `applySystemTheme()` itself, the gradient/RGB editor's
+`applyAndRerender()`, the theme JSON import handler, and once on initial
+page load — so the dropdown never silently shows a stale preset name that
+no longer accurately describes the current colors.
+
 ## Responsive layout and live resize/rotation
 
 The editor grid (Nodes / Flows / Diagram) uses a custom three-tier CSS
@@ -838,7 +887,7 @@ the `table-layout: fixed` fix without this).
   on `.field-select`. This entry exists specifically to record that a
   "verified" fix in V7 was not actually correct, and why — see the
   closing guidance below.
-- **V9 (current):** The clipping from V8 was gone, but the diagram still
+- **V9:** The clipping from V8 was gone, but the diagram still
   didn't feel like it was actually widening on rotation — also reported
   directly, with an exact specification of the desired landscape shape:
   Nodes top-left, Flows top-right, Diagram (with its controls) spanning
@@ -854,6 +903,25 @@ the `table-layout: fixed` fix without this).
   of it, both on direct load at landscape width and via live resize
   (simulating an actual rotation on an already-loaded page, not a fresh
   load at a different viewport).
+- **V10 (current):** Added system theme presets — a dropdown that
+  switches `themePalette` wholesale to one of 7 ready-made 8-color sets
+  (Default plus Neon/Natural/Spring/Summer/Autumn/Winter/Industrial,
+  requested directly, Neon specifically inspired by a reference image of
+  a neon-styled Sankey diagram the person shared). Scope was clarified
+  directly before building, since "system theme" could plausibly have
+  meant something much broader (canvas background, ribbon rendering
+  style, etc.): it's node/ribbon colors only, via the existing
+  `themePalette` mechanism, nothing about canvas/ink/export transparency.
+  See *System theme presets* above for full design detail. Two of the
+  seven palettes (Winter, Industrial) needed a real revision after their
+  first draft had several colors too close together to actually
+  distinguish in a rendered diagram — caught by rendering swatch grids
+  side by side, the same lesson as the V6 tint/shade percentage work:
+  verify visual separation by looking at it, not by reasoning about hex
+  values alone. All 7 themes were rendered against the bundled sample
+  data in Branded mode and visually confirmed distinct, plus confirmed
+  exporting correctly resolves to real hex (no leftover `var()`
+  references) and reading correctly on mobile width.
 
 ## If you're picking this up fresh
 
@@ -873,7 +941,8 @@ can fully validate.
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
 architecture*, *Ribbon style toggle*, *App chrome*, *Theme palette
-architecture*, *Responsive layout and live resize/rotation*, then look at
+architecture* (including *System theme presets*), *Responsive layout and
+live resize/rotation*, then look at
 `generateDiagram()` itself. Don't reach for a
 charting library. Don't add a new CSS class without updating
 `getStyledSvgString()`. Don't "fix" label collisions by making the check

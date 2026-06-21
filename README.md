@@ -599,23 +599,56 @@ A CSS layout change alone isn't sufficient, though — `generateDiagram()`
 only measures its container and redraws when it's called, and previously
 the only things that called it were data edits. Rotating the device
 without touching any data wouldn't have redrawn the SVG at its new,
-correct width until the next unrelated edit. Fixed with a `ResizeObserver`
-(`initResizeObserver()`, wired up at the end of `window.onload`) watching
-`#sankey-canvas-shell` directly, which calls `generateDiagram()` again
-(debounced ~120ms via `scheduleResizeRedraw()`, since rotation fires
-several intermediate resize events in quick succession) whenever the
-container's real width changes by more than a pixel. The width-delta
-check specifically guards against a feedback loop: `generateDiagram()`
-itself replaces the shell's children, which can trigger a spurious
-`ResizeObserver` callback even when the box itself didn't change size;
-comparing against the last known width before scheduling a redraw avoids
-redrawing in response to its own previous redraw. Verified by simulating
-an actual rotation in a live page (resizing the same loaded page from a
-portrait viewport to a landscape one, not reloading at a different
-viewport) and confirming the SVG's `viewBox` width changed with zero other
-interaction, in both directions (portrait→landscape and back), and that a
-single normal data edit still triggers exactly one `generateDiagram()`
-call (not two, which would indicate the observer was firing spuriously).
+correct width until the next unrelated edit.
+
+**This was fixed twice.** The first fix used `ResizeObserver` alone,
+watching `#sankey-canvas-shell`. It was verified by resizing a live page
+in a desktop-Chromium testing tool from a portrait viewport size to a
+landscape one and confirming the SVG's `viewBox` width changed — which it
+did, in that environment. It did NOT work on a real phone: the grid
+correctly reflowed to its two-column landscape layout, but the diagram
+stayed exactly the same width as portrait. This is a real, important gap
+between desktop-browser viewport-resize emulation and an actual mobile
+browser's rotation event sequence — emulated resize in a testing tool is
+not proof a real device's `ResizeObserver` (or anything else) fires the
+same way, and this project's testing methodology (see *Testing
+methodology* below) did not have a way to catch that difference before
+shipping. Take this as a standing caution about every "verified" claim
+elsewhere in this README: rendered-and-measured in a Chromium sandbox is
+real evidence, but it is not the same thing as confirmed on a real device,
+and the two can disagree.
+
+The second, current fix layers THREE overlapping signals rather than
+trusting any single one: `window.addEventListener('resize', ...)`,
+`window.addEventListener('orientationchange', ...)`, and `ResizeObserver`
+on the canvas shell, all three calling the same debounced
+`scheduleResizeRedraw()`. `resize` and `orientationchange` are the most
+universally-supported cross-browser signals for this exact scenario and
+don't depend on `ResizeObserver` semantics at all. The debounce was also
+lengthened from 120ms to 250ms, since real mobile browsers can report a
+transient, not-yet-settled viewport size for a brief moment immediately
+after rotation, before reaching the final post-rotation layout — firing
+the redraw too early risks measuring that intermediate, incorrect width
+rather than the real one. The `ResizeObserver`'s width-delta check
+(comparing against the last known width before scheduling a redraw)
+remains in place to guard against a feedback loop, since
+`generateDiagram()` replacing the shell's children can trigger a spurious
+observation even when the box itself didn't change size.
+
+A second, independent real bug was found and fixed in the same pass: the
+Flows table had a fixed `min-w-[340px]`, which was fine in the original
+single-column portrait/desktop layouts (where the table always had
+comfortably more than 340px to work with) but overflowed its column in
+the new 700px landscape tier, where the Nodes+Flows column can be as
+narrow as ~260px — confirmed by direct measurement
+(`table.scrollWidth` exceeding `table.getBoundingClientRect().width`) and
+visible as clipped/cut-off From/To/Value fields. Fixed by removing the
+fixed minimum and switching to `table-layout: fixed` so column widths are
+always derived from the table's actual available width rather than
+content's preferred width, plus `min-width: 0` on `.field-select` (a
+`<select>` can refuse to shrink below its content's intrinsic width even
+under `width: 100%` in some browsers, which would have silently defeated
+the `table-layout: fixed` fix without this).
 
 ## Change log (high-level)
 
@@ -769,8 +802,42 @@ call (not two, which would indicate the observer was firing spuriously).
   plus confirming a single normal data edit still triggers exactly one
   `generateDiagram()` call so the new observer isn't causing redundant
   redraws.
+- **V8 (current):** V7's rotation fix did not actually work on a real
+  phone, despite passing every test in this project's desktop-Chromium
+  testing methodology — reported directly by the person testing on their
+  own device: the grid correctly reflowed to two columns on rotation, but
+  the diagram itself stayed exactly the same width as portrait, and the
+  Flows table's From/To/Value fields were visibly clipped. Both were real,
+  independent bugs (see *Responsive layout and live resize/rotation*
+  above for full detail on each): (1) the single-`ResizeObserver` redraw
+  trigger was replaced with three overlapping signals (`resize`,
+  `orientationchange`, `ResizeObserver`) plus a longer debounce, since a
+  real mobile browser's rotation event sequence isn't guaranteed to match
+  what a desktop browser's viewport-resize emulation produces — this
+  project's existing Playwright-based testing methodology had no way to
+  surface that gap, and didn't. (2) The Flows table's fixed
+  `min-w-[340px]` (sized for single-column layouts that always had more
+  than 340px available) overflowed the new 700px landscape tier's
+  narrower column; fixed with `table-layout: fixed` plus `min-width: 0`
+  on `.field-select`. This entry exists specifically to record that a
+  "verified" fix in V7 was not actually correct, and why — see the
+  closing guidance below.
 
 ## If you're picking this up fresh
+
+**A real device disagreeing with this project's desktop-Chromium testing
+methodology is documented fact, not a hypothetical** — see V7→V8 above.
+Every "verified by rendering" claim in this README is real evidence from
+an actual headless-Chromium render, not a guess, but it is evidence about
+desktop-Chromium specifically. Mobile Safari, mobile Chrome, and other
+engines can and have behaved differently for at least one thing that
+matters here (resize/orientation event timing). Treat any fix that
+depends on viewport/resize/orientation behavior as unconfirmed until a
+real device check is possible, no matter how convincing the desktop
+render looks. This doesn't mean the testing methodology is worthless —
+it caught many real bugs across this project (see the V1-V6 entries
+above) — it means resize/orientation specifically sits outside what it
+can fully validate.
 
 Read, in order: *Why hand-authored SVG*, *Design system*, *Label placement
 architecture*, *Ribbon style toggle*, *App chrome*, *Theme palette

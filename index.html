@@ -257,18 +257,24 @@
            narrow single-column stack — confirmed by rendering at 844x390 and seeing zero
            layout change versus portrait. Tiers:
              - Default (narrow/portrait): everything stacked, full width, one column.
-             - 'landscape' tier (700px+): Nodes and Flows share a left column (still
-               stacked on top of each other, since neither is wide on its own), Diagram
-               gets a genuinely wide right column — this is the tier that actually makes
-               rotating to landscape worthwhile.
+             - 'landscape' tier (700px+): Nodes top-left, Flows top-right (each getting a
+               real half-width column since the row only splits two ways), Diagram spans
+               the FULL width underneath, across both columns. This replaced an earlier
+               version of this tier that gave Diagram a tall right-hand column sharing
+               width with a narrow Nodes+Flows left column — that version technically gave
+               Diagram more room than portrait, but nowhere near full width, and was
+               reported as not feeling like it widened at all on a real device. Diagram
+               spanning the full row width is what actually makes rotating to landscape
+               worth it: it can claim the entire available width, not a fraction of it
+               shared with another column.
              - 'desktop' tier (1024px+): the original three-way split, Nodes / Flows /
-               Diagram each their own column.
+               Diagram each their own column, side by side.
            generateDiagram() re-measures its container and redraws on every call, so
-           letting the Diagram column's actual width change at each tier is what makes the
-           SVG itself widen — combined with the resize listener below (which calls
-           generateDiagram() again after a debounced resize/orientation event), rotating
-           the device becomes a real way to get a wider diagram, not just a wider empty
-           card around the same-sized SVG. */
+           letting the Diagram area's actual width change at each tier is what makes the
+           SVG itself widen — combined with the resize/orientation handling below (which
+           calls generateDiagram() again after a debounced resize/orientation event),
+           rotating the device becomes a real way to get a wider diagram, not just a wider
+           empty card around the same-sized SVG. */
         .sankey-layout-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -280,8 +286,8 @@
 
         @media (min-width: 700px) {
             .sankey-layout-grid {
-                grid-template-columns: minmax(260px, 38%) 1fr;
-                grid-template-areas: "nodes diagram" "flows diagram";
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas: "nodes flows" "diagram diagram";
             }
         }
         @media (min-width: 1024px) {

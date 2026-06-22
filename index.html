@@ -87,6 +87,26 @@
         .editor-row:hover { background: #f8f7f2; }
         .editor-row:hover .row-delete { opacity: 1; }
         .row-delete { opacity: 0; transition: opacity 0.12s ease; }
+        /* expand button is always visible so users can discover the feature;
+           it shows a filled indicator dot when overrides are active */
+        .row-expand { color: #d8d4c9; }
+        .row-expand:hover { background: #f4f2ed; color: #1c2127; }
+        .row-expand.has-overrides { color: #2563eb; }
+
+        .node-editor-block { border-radius: 10px; overflow: hidden; }
+        .node-editor-block .editor-row { border-radius: 0; }
+
+        .node-overrides {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            padding: 6px 8px 8px; background: #f8f7f2;
+            border-top: 1px solid #f0eee6;
+        }
+        .override-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .override-label {
+            font-size: 9.5px; font-weight: 700; color: #9a9484; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .override-hint { font-weight: 500; text-transform: none; letter-spacing: 0; }
+        .override-input { width: 80px; font-size: 11px; padding: 4px 6px; }
 
         .empty-state {
             text-align: center; padding: 36px 16px; color: #b3ad9c;
@@ -351,7 +371,7 @@
                             <span class="panel-title">Nodes</span>
                             <span id="node-count-badge" class="bg-[#f4f2ed] text-[#7c7766] text-[10.5px] px-1.5 py-0.5 rounded-md font-semibold min-w-[18px] text-center">0</span>
                         </div>
-                        <p class="panel-subtitle">The boxes your flows connect</p>
+                        <p class="panel-subtitle">Name, color, and optional value / column</p>
                     </div>
                     <button onclick="addNode()" class="btn-icon" title="Add a node">
                         <i class="fa-solid fa-plus text-xs"></i>
@@ -621,20 +641,94 @@
             }
 
             nodes.forEach((node, index) => {
+                const hasOverrides = typeof node.value === 'number' || typeof node.column === 'number';
                 const div = document.createElement('div');
-                div.className = 'editor-row';
+                div.className = 'node-editor-block';
                 div.innerHTML = `
-                    <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(node.color)};"
-                            onclick="openColorPickerFor(this, ${index})" title="Change color"></button>
-                    <input type="text" value="${escapeAttr(node.name)}" class="field-input flex-1 min-w-0"
-                           onchange="updateNodeName(${index}, this.value)">
-                    <button onclick="deleteNode(${index})" class="btn-icon row-delete" title="Delete node">
-                        <i class="fa-solid fa-xmark text-xs"></i>
-                    </button>
+                    <div class="editor-row">
+                        <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(node.color)};"
+                                onclick="openColorPickerFor(this, ${index})" title="Change color"></button>
+                        <input type="text" value="${escapeAttr(node.name)}" class="field-input flex-1 min-w-0"
+                               onchange="updateNodeName(${index}, this.value)">
+                        <button onclick="toggleNodeOverrides(this, ${index})"
+                                class="btn-icon row-expand ${hasOverrides ? 'has-overrides' : ''}"
+                                title="${hasOverrides ? 'Value / column overrides active' : 'Set value or column override'}">
+                            <i class="fa-solid fa-${hasOverrides ? 'circle-dot' : 'chevron-down'} text-xs"></i>
+                        </button>
+                        <button onclick="deleteNode(${index})" class="btn-icon row-delete" title="Delete node">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+                    <div class="node-overrides" style="display:${hasOverrides ? 'flex' : 'none'};">
+                        <div class="override-field">
+                            <label class="override-label">Value <span class="override-hint">(pins size)</span></label>
+                            <input type="number" min="0" step="any"
+                                   value="${typeof node.value === 'number' ? node.value : ''}"
+                                   placeholder="auto"
+                                   class="field-select override-input"
+                                   onchange="updateNodeOverride(${index}, 'value', this.value)">
+                        </div>
+                        <div class="override-field">
+                            <label class="override-label">Column <span class="override-hint">(0 = left)</span></label>
+                            <input type="number" min="0" step="1"
+                                   value="${typeof node.column === 'number' ? node.column : ''}"
+                                   placeholder="auto"
+                                   class="field-select override-input"
+                                   onchange="updateNodeOverride(${index}, 'column', this.value)">
+                        </div>
+                        <button onclick="clearNodeOverrides(${index})" class="btn-danger-ghost text-[10px] px-2 py-1 rounded-md ml-auto self-center" title="Clear both overrides">
+                            Clear
+                        </button>
+                    </div>
                 `;
                 container.appendChild(div);
             });
             updateFlowSelects();
+        }
+
+        function toggleNodeOverrides(btn, index) {
+            const block = btn.closest('.node-editor-block');
+            const panel = block.querySelector('.node-overrides');
+            const isOpen = panel.style.display !== 'none';
+            panel.style.display = isOpen ? 'none' : 'flex';
+            const icon = btn.querySelector('i');
+            icon.className = isOpen ? 'fa-solid fa-chevron-down text-xs' : 'fa-solid fa-chevron-up text-xs';
+        }
+
+        function updateNodeOverride(index, field, rawValue) {
+            const val = rawValue.trim();
+            if (val === '') {
+                delete nodes[index][field];
+            } else {
+                const parsed = field === 'column' ? parseInt(val, 10) : parseFloat(val);
+                if (!isNaN(parsed) && parsed >= 0) {
+                    nodes[index][field] = parsed;
+                }
+            }
+            // Re-render just the expand button state to reflect has-overrides
+            const hasOverrides = typeof nodes[index].value === 'number' || typeof nodes[index].column === 'number';
+            const blocks = document.querySelectorAll('.node-editor-block');
+            if (blocks[index]) {
+                const expandBtn = blocks[index].querySelector('.row-expand');
+                if (expandBtn) {
+                    expandBtn.classList.toggle('has-overrides', hasOverrides);
+                    const icon = expandBtn.querySelector('i');
+                    const panelOpen = blocks[index].querySelector('.node-overrides').style.display !== 'none';
+                    if (!panelOpen) {
+                        icon.className = hasOverrides ? 'fa-solid fa-circle-dot text-xs' : 'fa-solid fa-chevron-down text-xs';
+                    }
+                }
+            }
+            saveToLocalStorage();
+            generateDiagram();
+        }
+
+        function clearNodeOverrides(index) {
+            delete nodes[index].value;
+            delete nodes[index].column;
+            renderNodes();
+            saveToLocalStorage();
+            generateDiagram();
         }
 
         let activeColorPicker = null;
@@ -1028,7 +1122,14 @@
         // order nodes/links were entered in.
         function assignColumns(nodeNames, validLinks) {
             const rank = {};
-            nodeNames.forEach(n => rank[n] = 0);
+            // Seed from explicit node.column declarations first — the forward pass can only
+            // push ranks higher, never lower, so a declared column acts as a guaranteed floor.
+            // This is what allows new entrants (no predecessors) and pinned-value terminal
+            // nodes to sit in the correct time-period column rather than drifting to column 0.
+            nodeNames.forEach(n => {
+                const nodeObj = nodes.find(nd => nd.name === n);
+                rank[n] = (nodeObj && typeof nodeObj.column === 'number') ? nodeObj.column : 0;
+            });
             const incoming = {};
             nodeNames.forEach(n => incoming[n] = []);
             validLinks.forEach(l => incoming[l.target] && incoming[l.target].push(l.source));
@@ -1141,6 +1242,14 @@
             nodeNames.forEach(name => { colNodeNames[rank[name]].push(name); });
 
             function nodeValue(name) {
+                // If the node has an explicit value declared (node.value), that value IS
+                // the node's size regardless of what flows in or out. This is what enables
+                // multi-period diagrams where AUM grows organically between periods, and new
+                // entrants that appear at an intermediate column without any upstream flow.
+                const nodeObj = nodes.find(n => n.name === name);
+                if (nodeObj && typeof nodeObj.value === 'number' && nodeObj.value > 0) {
+                    return nodeObj.value;
+                }
                 const inflow = validLinks.filter(l => l.target === name).reduce((s, l) => s + l.value, 0);
                 const outflow = validLinks.filter(l => l.source === name).reduce((s, l) => s + l.value, 0);
                 return inflow > 0 ? inflow : outflow;
@@ -1603,6 +1712,14 @@
                     const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
                     if (!colorRefShapeOk) {
                         throw new Error("This data file's node colors aren't in the expected theme-reference format. Please re-create or re-export this file in the current version.");
+                    }
+                    // node.value and node.column are optional but must be positive numbers if present
+                    const overridesOk = data.nodes.every(n =>
+                        (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
+                        (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0))
+                    );
+                    if (!overridesOk) {
+                        throw new Error("One or more nodes has an invalid 'value' or 'column' field (must be non-negative numbers if provided).");
                     }
                     nodes = data.nodes; links = data.links;
                     renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();

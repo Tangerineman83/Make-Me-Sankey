@@ -229,7 +229,10 @@
             transition: opacity 0.16s ease, filter 0.16s ease;
             cursor: pointer;
         }
-        .sk-ribbon:hover {
+        .sk-ribbon.is-highlighted {
+            fill-opacity: 1 !important;
+            filter: brightness(1.08);
+        }
             filter: brightness(0.94);
         }
         .sk-ribbon.is-dimmed {
@@ -323,25 +326,23 @@
         .sankey-layout-grid {
             display: grid;
             grid-template-columns: 1fr;
-            grid-template-areas: "nodes" "flows" "diagram";
+            grid-template-areas: "data" "diagram";
         }
-        .sankey-col-nodes { grid-area: nodes; }
-        .sankey-col-flows { grid-area: flows; }
+        .sankey-col-data    { grid-area: data; }
         .sankey-col-diagram { grid-area: diagram; }
 
         @media (min-width: 700px) {
             .sankey-layout-grid {
                 grid-template-columns: 1fr 1fr;
-                grid-template-areas: "nodes flows" "diagram diagram";
+                grid-template-areas: "data diagram";
+                align-items: start;
             }
         }
         @media (min-width: 1024px) {
             .sankey-layout-grid {
-                grid-template-columns: 5fr 4fr;
-                grid-template-areas: "nodes diagram";
+                grid-template-columns: 5fr 6fr;
+                grid-template-areas: "data diagram";
             }
-            /* The unified data panel spans the single left area */
-            .sankey-col-nodes { grid-area: nodes !important; }
         }
 
         /* Spreadsheet grid */
@@ -396,6 +397,81 @@
         }
         .transfer-arrow { color: #b3ad9c; font-size: 11px; padding: 0 1px; }
 
+        /* ---- Smart Table ---- */
+        .smart-table-wrap {
+            overflow-x: auto; flex: 1;
+        }
+        .smart-table {
+            width: 100%; border-collapse: collapse; font-size: 13px;
+        }
+        .smart-table thead th {
+            padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 700;
+            color: #9a9484; text-transform: uppercase; letter-spacing: 0.05em;
+            background: #fafaf6; border-bottom: 1px solid #ede9e0; white-space: nowrap;
+        }
+        .smart-table tbody tr {
+            border-bottom: 1px solid #f4f2ed; transition: background 0.1s;
+        }
+        .smart-table tbody tr:hover { background: #f8f7f3; }
+        .smart-table tbody tr.row-highlighted { background: #eef4fd; }
+        .smart-table td { padding: 3px 4px; vertical-align: middle; }
+        .smart-table td.td-arrow {
+            width: 20px; text-align: center; color: #c7c2b3; font-size: 11px; padding: 0;
+        }
+        .smart-table td.td-value { width: 76px; }
+        .smart-table td.td-del { width: 28px; text-align: center; }
+
+        /* Node cell: color dot + text input side by side */
+        .node-cell {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .node-dot {
+            width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+            cursor: pointer; border: 1.5px solid rgba(0,0,0,0.12);
+            transition: transform 0.1s; position: relative;
+        }
+        .node-dot:hover { transform: scale(1.25); }
+        .node-dot.unset { background: #e7e3d8; border-style: dashed; }
+
+        .node-input {
+            flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+            font-size: 12.5px; font-weight: 500; color: #1c2127; padding: 6px 4px;
+            font-family: inherit;
+        }
+        .node-input::placeholder { color: #c7c2b3; font-weight: 400; }
+
+        .value-input {
+            width: 100%; border: none; outline: none; background: transparent;
+            font-size: 12.5px; font-weight: 600; color: #1c2127; padding: 6px 8px;
+            text-align: right; font-family: 'IBM Plex Mono', monospace;
+        }
+        .value-input::placeholder { color: #c7c2b3; font-weight: 400; }
+
+        .row-del-btn {
+            opacity: 0; width: 22px; height: 22px; border-radius: 5px;
+            color: #c7c2b3; font-size: 10px;
+            display: inline-flex; align-items: center; justify-content: center;
+            transition: opacity 0.1s, background 0.1s, color 0.1s;
+        }
+        .smart-table tbody tr:hover .row-del-btn { opacity: 1; }
+        .row-del-btn:hover { color: #b3503d; background: #fbeeec; }
+
+        /* Autocomplete dropdown */
+        .node-autocomplete {
+            position: fixed; z-index: 1000;
+            background: #fff; border: 1px solid #e0dbd0; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden; min-width: 160px;
+        }
+        .autocomplete-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; font-size: 12.5px; font-weight: 500; color: #1c2127;
+            cursor: pointer; transition: background 0.08s;
+        }
+        .autocomplete-item:hover, .autocomplete-item.is-active { background: #f4f2ed; }
+        .autocomplete-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .sk-ribbon, .sk-node, .sk-label-name { transition: none !important; }
         }
@@ -443,43 +519,35 @@
 
         <div class="sankey-layout-grid gap-6 items-start">
             
-            <div class="sankey-col-nodes sankey-col-flows panel p-0 flex flex-col" style="grid-column: span 2; grid-area: unset;">
+            <div class="sankey-col-data panel p-0 flex flex-col">
+
+                <!-- Smart table header -->
                 <div class="panel-header">
                     <div>
-                        <span class="panel-title">Data</span>
-                        <p class="panel-subtitle" id="data-panel-subtitle">Series values by column — blank means absent at that period</p>
-                    </div>
-                    <div class="flex items-center gap-1">
-                        <button id="add-col-btn" onclick="addSeriesColumn()" class="btn btn-ghost text-[11px]" title="Add a column">
-                            <i class="fa-solid fa-table-columns text-[10px]"></i> Col
-                        </button>
-                        <button id="add-series-btn" onclick="addSeries()" class="btn-icon" title="Add a series">
-                            <i class="fa-solid fa-plus text-xs"></i>
-                        </button>
+                        <span class="panel-title">Flows</span>
+                        <p class="panel-subtitle">Each row is a connection. Click any node name to set its color.</p>
                     </div>
                 </div>
 
-                <!-- Spreadsheet grid -->
-                <div class="overflow-x-auto">
-                    <table id="grid-table" class="w-full text-xs" style="border-collapse: collapse; min-width: 100%;">
-                        <thead id="grid-head"></thead>
-                        <tbody id="grid-body"></tbody>
+                <!-- The smart table -->
+                <div class="smart-table-wrap">
+                    <table class="smart-table" id="smart-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th></th>
+                                <th>Target</th>
+                                <th>Value</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="smart-table-body"></tbody>
                     </table>
                 </div>
 
-                <!-- Transfers section — cross-series flows only -->
-                <div class="border-t border-[#f0eee6]">
-                    <div class="panel-header" style="padding: 10px 14px 8px;">
-                        <div>
-                            <span class="panel-title" style="font-size: 12px;">Transfers</span>
-                            <p class="panel-subtitle">Cross-series flows (mergers, exits, injections). Carry-forwards are automatic.</p>
-                        </div>
-                        <button onclick="addTransfer()" class="btn btn-ghost text-[11px]" style="background:#f4f2ed;">
-                            <i class="fa-solid fa-circle-plus text-[10px]"></i> Add
-                        </button>
-                    </div>
-                    <div id="transfers-list" class="px-3 pb-3 space-y-1"></div>
-                </div>
+                <!-- Autocomplete dropdown (shared, repositioned by JS) -->
+                <div id="node-autocomplete" class="node-autocomplete" style="display:none;"></div>
+
             </div>
 
             <div class="sankey-col-diagram panel p-0 flex flex-col min-h-[540px]">
@@ -735,8 +803,8 @@
                     payload.seriesModel   = seriesModel;
                     payload.seriesFlows   = seriesFlows;
                 } else {
-                    payload.nodes = nodes;
                     payload.links = links;
+                    payload.nodeRegistry = nodeRegistry;
                     payload.columnLabels = columnLabels;
                 }
                 localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify(payload));
@@ -756,11 +824,16 @@
                         seriesColumns = data.seriesColumns || [];
                         seriesModel   = data.seriesModel;
                         seriesFlows   = data.seriesFlows || [];
-                        nodes = []; links = []; columnLabels = [];
+                        nodes = []; links = []; columnLabels = []; nodeRegistry = {};
                     } else {
-                        nodes = data.nodes || [];
                         links = data.links || [];
                         columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
+                        nodeRegistry = data.nodeRegistry || {};
+                        // Rebuild nodeRegistry from saved nodes array if no nodeRegistry saved
+                        if (!data.nodeRegistry && Array.isArray(data.nodes)) {
+                            data.nodes.forEach(n => { nodeRegistry[n.name] = { color: n.color }; });
+                        }
+                        syncNodesFromRegistry();
                         seriesColumns = null; seriesModel = null; seriesFlows = null;
                     }
                 }
@@ -777,7 +850,9 @@
         function renderColumnLabelInputs(numCols) {
             const row = document.getElementById('col-labels-row');
             if (!row) return;
-            if (!numCols || numCols < 2) {
+            // In flat (non-v3) mode, only show if the user has actually set at least one label
+            const hasAnyLabel = columnLabels.some(l => l && l.trim());
+            if (!numCols || numCols < 2 || (!isV3Mode() && !hasAnyLabel)) {
                 row.style.display = 'none';
                 return;
             }
@@ -1032,508 +1107,326 @@
             renderTransfers(); saveToLocalStorage(); generateDiagram();
         }
 
-        function renderNodes() {
-            const container = document.getElementById('nodes-list');
-            const badge = document.getElementById('node-count-badge');
-            container.innerHTML = '';
-            badge.innerText = nodes.length;
+        // ============================================================
+        // SMART TABLE — the primary input UI
+        // Nodes are created implicitly: every unique name typed in a
+        // Source or Target cell becomes a node with an auto-assigned
+        // color. Clicking the color dot opens the existing color picker.
+        // ============================================================
 
-            if (nodes.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fa-solid fa-bezier-curve text-lg mb-2 text-[#d8d4c9]"></i>
-                        <p class="text-xs">No nodes yet — add one to get started</p>
-                    </div>`;
-                return;
+        // Node registry: maps name → {color}. This is the single source
+        // of truth for node colors. links[] stays as-is (source/target names).
+        // On every table change: sync nodes[] from the registry, then render.
+        let nodeRegistry = {}; // { "Aviva": { color: {themeIndex, variant} } }
+
+        const THEME_ORDER = [2, 3, 4, 5, 6, 7, 0, 1];
+        function nextAutoColor() {
+            const used = Object.keys(nodeRegistry).length;
+            const ti = THEME_ORDER[used % THEME_ORDER.length];
+            return { themeIndex: ti, variant: 'base' };
+        }
+
+        function ensureNode(name) {
+            if (!name || !name.trim()) return;
+            const key = name.trim();
+            if (!nodeRegistry[key]) {
+                nodeRegistry[key] = { color: nextAutoColor() };
             }
+        }
 
-            nodes.forEach((node, index) => {
-                const hasOverrides = typeof node.value === 'number' || typeof node.column === 'number' || !!node.displayName;
-                const div = document.createElement('div');
-                div.className = 'node-editor-block';
-                div.innerHTML = `
-                    <div class="editor-row">
-                        <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(node.color)};"
-                                onclick="openColorPickerFor(this, ${index})" title="Change color"></button>
-                        <input type="text" value="${escapeAttr(node.name)}" class="field-input flex-1 min-w-0"
-                               onchange="updateNodeName(${index}, this.value)">
-                        <button onclick="toggleNodeOverrides(this, ${index})"
-                                class="btn-icon row-expand ${hasOverrides ? 'has-overrides' : ''}"
-                                title="${hasOverrides ? 'Value / column overrides active' : 'Set value or column override'}">
-                            <i class="fa-solid fa-${hasOverrides ? 'circle-dot' : 'chevron-down'} text-xs"></i>
-                        </button>
-                        <button onclick="deleteNode(${index})" class="btn-icon row-delete" title="Delete node">
-                            <i class="fa-solid fa-xmark text-xs"></i>
-                        </button>
-                    </div>
-                    <div class="node-overrides" style="display:${hasOverrides ? 'flex' : 'none'};">
-                        <div class="override-field">
-                            <label class="override-label">Display name <span class="override-hint">(shown in diagram)</span></label>
-                            <input type="text" maxlength="40"
-                                   value="${escapeAttr(node.displayName || '')}"
-                                   placeholder="${escapeAttr(node.name)}"
-                                   class="field-select override-input" style="width:120px;"
-                                   onchange="updateNodeOverride(${index}, 'displayName', this.value)">
-                        </div>
-                        <div class="override-field">
-                            <label class="override-label">Value <span class="override-hint">(pins size)</span></label>
-                            <input type="number" min="0" step="any"
-                                   value="${typeof node.value === 'number' ? node.value : ''}"
-                                   placeholder="auto"
-                                   class="field-select override-input"
-                                   onchange="updateNodeOverride(${index}, 'value', this.value)">
-                        </div>
-                        <div class="override-field">
-                            <label class="override-label">Column <span class="override-hint">(0 = left)</span></label>
-                            <input type="number" min="0" step="1"
-                                   value="${typeof node.column === 'number' ? node.column : ''}"
-                                   placeholder="auto"
-                                   class="field-select override-input"
-                                   onchange="updateNodeOverride(${index}, 'column', this.value)">
-                        </div>
-                        <button onclick="clearNodeOverrides(${index})" class="btn-danger-ghost text-[10px] px-2 py-1 rounded-md ml-auto self-center" title="Clear both overrides">
-                            Clear
-                        </button>
-                    </div>
-                `;
-                container.appendChild(div);
+        // Rebuild nodes[] from nodeRegistry + current link names
+        function syncNodesFromRegistry() {
+            // Gather all names actually used in links
+            const usedNames = new Set();
+            links.forEach(l => { if (l.source) usedNames.add(l.source); if (l.target) usedNames.add(l.target); });
+            // Prune registry to only used names (keep colors for reuse if re-added)
+            // Actually: keep registry entries so color survives a temporary delete
+            // Just sync nodes[] array for the renderer
+            nodes = [];
+            usedNames.forEach(name => {
+                ensureNode(name);
+                nodes.push({ name, color: nodeRegistry[name].color });
             });
-            updateFlowSelects();
         }
 
-        function toggleNodeOverrides(btn, index) {
-            const block = btn.closest('.node-editor-block');
-            const panel = block.querySelector('.node-overrides');
-            const isOpen = panel.style.display !== 'none';
-            panel.style.display = isOpen ? 'none' : 'flex';
-            const icon = btn.querySelector('i');
-            icon.className = isOpen ? 'fa-solid fa-chevron-down text-xs' : 'fa-solid fa-chevron-up text-xs';
-        }
-
-        function updateNodeOverride(index, field, rawValue) {
-            const val = rawValue.trim();
-            if (val === '') {
-                delete nodes[index][field];
-            } else if (field === 'displayName') {
-                nodes[index][field] = val;
-            } else {
-                const parsed = field === 'column' ? parseInt(val, 10) : parseFloat(val);
-                if (!isNaN(parsed) && parsed >= 0) {
-                    nodes[index][field] = parsed;
-                }
-            }
-            // Re-render just the expand button state to reflect has-overrides
-            const hasOverrides = typeof nodes[index].value === 'number' || typeof nodes[index].column === 'number' || !!nodes[index].displayName;
-            const blocks = document.querySelectorAll('.node-editor-block');
-            if (blocks[index]) {
-                const expandBtn = blocks[index].querySelector('.row-expand');
-                if (expandBtn) {
-                    expandBtn.classList.toggle('has-overrides', hasOverrides);
-                    const icon = expandBtn.querySelector('i');
-                    const panelOpen = blocks[index].querySelector('.node-overrides').style.display !== 'none';
-                    if (!panelOpen) {
-                        icon.className = hasOverrides ? 'fa-solid fa-circle-dot text-xs' : 'fa-solid fa-chevron-down text-xs';
-                    }
-                }
-            }
-            saveToLocalStorage();
-            generateDiagram();
-        }
-
-        function clearNodeOverrides(index) {
-            delete nodes[index].value;
-            delete nodes[index].column;
-            delete nodes[index].displayName;
-            renderNodes();
-            saveToLocalStorage();
-            generateDiagram();
-        }
-
-        let activeColorPicker = null;
-        let colorPickerOnThemeChange = null; // re-render hook set by openColorPickerFor
-
-        function closeColorPicker() {
-            if (activeColorPicker) { activeColorPicker.remove(); activeColorPicker = null; }
-            document.removeEventListener('mousedown', handleColorPickerOutsideClick, true);
-            colorPickerOnThemeChange = null;
-        }
-
-        function handleColorPickerOutsideClick(e) {
-            if (activeColorPicker && !activeColorPicker.contains(e.target)) closeColorPicker();
-        }
-
-        // ---- HSV <-> RGB helpers for the gradient/RGB theme-color editor ----
-        function hsvToRgb(h, s, v) {
-            const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
-            let r, g, b;
-            if (h < 60) [r, g, b] = [c, x, 0];
-            else if (h < 120) [r, g, b] = [x, c, 0];
-            else if (h < 180) [r, g, b] = [0, c, x];
-            else if (h < 240) [r, g, b] = [0, x, c];
-            else if (h < 300) [r, g, b] = [x, 0, c];
-            else [r, g, b] = [c, 0, x];
-            return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
-        }
-        function rgbToHsv(r, g, b) {
-            r /= 255; g /= 255; b /= 255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-            let h = 0;
-            if (d !== 0) {
-                if (max === r) h = 60 * (((g - b) / d) % 6);
-                else if (max === g) h = 60 * ((b - r) / d + 2);
-                else h = 60 * ((r - g) / d + 4);
-            }
-            if (h < 0) h += 360;
-            return [h, max === 0 ? 0 : d / max, max];
-        }
-        function rgbToHex(r, g, b) { return '#' + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join(''); }
-        function hexToRgb(hex) { return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]; }
-
-        // Builds the gradient-square + hue-strip + RGB/hex editor for redefining a theme
-        // color's base hue. The two input methods (dragging the gradient, typing RGB/hex)
-        // stay synchronized: moving the picker updates the RGB/hex fields, and editing the
-        // fields moves the picker, because both read/write the same shared {h,s,v} state.
-        function buildThemeColorEditor(themeIndex, onClose) {
-            const wrap = document.createElement('div');
-            wrap.className = 'theme-editor';
-
-            let [h, s, v] = rgbToHsv(...hexToRgb(themePalette[themeIndex]));
-
-            wrap.innerHTML = `
-                <div class="theme-editor-header">
-                    <button type="button" class="theme-editor-back" title="Back to palette">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <span>Edit theme color ${themeIndex + 1}</span>
-                </div>
-                <div class="sv-square">
-                    <div class="sv-white-layer"></div>
-                    <div class="sv-black-layer"></div>
-                    <div class="sv-cursor"></div>
-                </div>
-                <div class="hue-strip"><div class="hue-cursor"></div></div>
-                <div class="rgb-row">
-                    <div class="rgb-field"><label>R</label><input type="number" min="0" max="255" class="rgb-r"></div>
-                    <div class="rgb-field"><label>G</label><input type="number" min="0" max="255" class="rgb-g"></div>
-                    <div class="rgb-field"><label>B</label><input type="number" min="0" max="255" class="rgb-b"></div>
-                </div>
-                <div class="hex-row">
-                    <div class="hex-preview"></div>
-                    <input type="text" class="hex-field" spellcheck="false" maxlength="7">
-                </div>
-            `;
-
-            const svSquare = wrap.querySelector('.sv-square');
-            const svCursor = wrap.querySelector('.sv-cursor');
-            const hueStrip = wrap.querySelector('.hue-strip');
-            const hueCursor = wrap.querySelector('.hue-cursor');
-            const rInput = wrap.querySelector('.rgb-r');
-            const gInput = wrap.querySelector('.rgb-g');
-            const bInput = wrap.querySelector('.rgb-b');
-            const hexInput = wrap.querySelector('.hex-field');
-            const hexPreview = wrap.querySelector('.hex-preview');
-
-            function applyAndRerender() {
-                const newHex = rgbToHex(...hsvToRgb(h, s, v));
-                themePalette[themeIndex] = newHex;
-                saveToLocalStorage();
-                generateDiagram();
-                renderNodes();
-                syncSystemThemeSelect();
-                if (colorPickerOnThemeChange) colorPickerOnThemeChange();
-            }
-
-            function render() {
-                const [r, g, b] = hsvToRgb(h, s, v);
-                const hex = rgbToHex(r, g, b);
-                svSquare.style.backgroundColor = `hsl(${h}, 100%, 50%)`;
-                svCursor.style.left = (s * 100) + '%';
-                svCursor.style.top = ((1 - v) * 100) + '%';
-                hueCursor.style.left = (h / 360 * 100) + '%';
-                rInput.value = r; gInput.value = g; bInput.value = b;
-                hexInput.value = hex.toUpperCase();
-                hexPreview.style.background = hex;
-            }
-
-            let draggingSV = false;
-            const eventPoint = (e) => e.touches && e.touches.length ? e.touches[0] : e;
-            const updateSV = (e) => {
-                const pt = eventPoint(e);
-                const rect = svSquare.getBoundingClientRect();
-                s = Math.max(0, Math.min(1, (pt.clientX - rect.left) / rect.width));
-                v = Math.max(0, Math.min(1, 1 - (pt.clientY - rect.top) / rect.height));
-                render(); applyAndRerender();
-            };
-            svSquare.addEventListener('mousedown', e => { draggingSV = true; updateSV(e); });
-            window.addEventListener('mousemove', e => { if (draggingSV) updateSV(e); });
-            window.addEventListener('mouseup', () => draggingSV = false);
-            svSquare.addEventListener('touchstart', e => { draggingSV = true; updateSV(e); e.preventDefault(); }, { passive: false });
-            window.addEventListener('touchmove', e => { if (draggingSV) { updateSV(e); e.preventDefault(); } }, { passive: false });
-            window.addEventListener('touchend', () => draggingSV = false);
-
-            let draggingHue = false;
-            const updateHue = (e) => {
-                const pt = eventPoint(e);
-                const rect = hueStrip.getBoundingClientRect();
-                h = Math.max(0, Math.min(360, (pt.clientX - rect.left) / rect.width * 360));
-                render(); applyAndRerender();
-            };
-            hueStrip.addEventListener('mousedown', e => { draggingHue = true; updateHue(e); });
-            window.addEventListener('mousemove', e => { if (draggingHue) updateHue(e); });
-            window.addEventListener('mouseup', () => draggingHue = false);
-            hueStrip.addEventListener('touchstart', e => { draggingHue = true; updateHue(e); e.preventDefault(); }, { passive: false });
-            window.addEventListener('touchmove', e => { if (draggingHue) { updateHue(e); e.preventDefault(); } }, { passive: false });
-            window.addEventListener('touchend', () => draggingHue = false);
-
-            [rInput, gInput, bInput].forEach(inp => {
-                inp.addEventListener('input', () => {
-                    const r = Math.max(0, Math.min(255, +rInput.value || 0));
-                    const g = Math.max(0, Math.min(255, +gInput.value || 0));
-                    const b = Math.max(0, Math.min(255, +bInput.value || 0));
-                    [h, s, v] = rgbToHsv(r, g, b);
-                    render(); applyAndRerender();
-                });
-            });
-            hexInput.addEventListener('change', () => {
-                const val = hexInput.value.trim();
-                if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-                    [h, s, v] = rgbToHsv(...hexToRgb(val));
-                    render(); applyAndRerender();
-                }
-            });
-
-            wrap.querySelector('.theme-editor-back').addEventListener('click', onClose);
-
-            render();
-            return wrap;
-        }
-
-        // Main palette grid: each theme color shown as a column with its full tint/base/
-        // shade run (exact Office percentages — see THEME_TINT_PERCENTS/THEME_SHADE_PERCENTS
-        // above), click any cell to select that exact variant for the node. A small pencil
-        // affordance on the base-row cell opens buildThemeColorEditor() for that theme slot,
-        // letting the user redefine the underlying hue; every node referencing that theme
-        // index (at any variant) updates automatically since colors are resolved live.
-        function buildColorPopover(currentRef, onSelect) {
-            const pop = document.createElement('div');
-            pop.className = 'color-popover';
-
-            function showGrid() {
-                pop.innerHTML = '';
-                const label = document.createElement('div');
-                label.className = 'color-popover-label';
-                label.textContent = 'Theme palette';
-                pop.appendChild(label);
-
-                function makeCell(themeIndex, variant, isBase) {
-                    const hex = deriveVariant(themePalette[themeIndex], variant);
-                    const cell = document.createElement('div');
-                    const isSelected = currentRef && currentRef.themeIndex === themeIndex && (currentRef.variant || 'base') === variant;
-                    cell.className = 'color-swatch-cell' + (isSelected ? ' is-selected' : '');
-                    cell.style.background = hex;
-                    if (isBase) cell.style.boxShadow = 'inset 0 0 0 1px rgba(28,33,39,0.12)';
-                    cell.title = hex;
-                    cell.onclick = () => { onSelect({ themeIndex, variant }); closeColorPicker(); };
-                    if (isBase) {
-                        const pencil = document.createElement('div');
-                        pencil.className = 'color-swatch-edit-affordance';
-                        pencil.innerHTML = '<i class="fa-solid fa-pencil"></i>';
-                        pencil.title = 'Edit this theme color';
-                        pencil.onclick = (e) => {
-                            e.stopPropagation();
-                            pop.innerHTML = '';
-                            pop.appendChild(buildThemeColorEditor(themeIndex, showGrid));
-                        };
-                        cell.appendChild(pencil);
-                    }
-                    return cell;
-                }
-
-                // Lightest tints first (tint4 = 80% lighter) down to base, then shades.
-                for (let i = 4; i >= 0; i--) {
-                    const row = document.createElement('div');
-                    row.className = 'color-popover-row';
-                    themePalette.forEach((_, themeIndex) => row.appendChild(makeCell(themeIndex, `tint${i}`, false)));
-                    pop.appendChild(row);
-                }
-                const baseRow = document.createElement('div');
-                baseRow.className = 'color-popover-row is-base-row';
-                themePalette.forEach((_, themeIndex) => baseRow.appendChild(makeCell(themeIndex, 'base', true)));
-                pop.appendChild(baseRow);
-                for (let i = 0; i < 2; i++) {
-                    const row = document.createElement('div');
-                    row.className = 'color-popover-row';
-                    themePalette.forEach((_, themeIndex) => row.appendChild(makeCell(themeIndex, `shade${i}`, false)));
-                    pop.appendChild(row);
-                }
-
-                const hint = document.createElement('div');
-                hint.className = 'color-popover-hint';
-                hint.innerHTML = 'Hover a base color for <i class="fa-solid fa-pencil"></i> to edit the theme';
-                pop.appendChild(hint);
-            }
-
-            showGrid();
-            return pop;
-        }
-
-        function openColorPickerFor(triggerEl, nodeIndex) {
-            colorPickerOnThemeChange = () => {
-                triggerEl.style.background = resolveThemeColor(nodes[nodeIndex].color);
-            };
-            openColorPicker(triggerEl, nodes[nodeIndex].color, (ref) => updateNodeColor(nodeIndex, ref));
-        }
-
-        function openColorPicker(triggerEl, currentRef, onSelect) {
-            closeColorPicker();
-            const pop = buildColorPopover(currentRef, (ref) => {
-                triggerEl.style.background = resolveThemeColor(ref);
-                onSelect(ref);
-            });
-            document.body.appendChild(pop);
-
-            const rect = triggerEl.getBoundingClientRect();
-            const popWidth = 220;
-            let left = rect.left + window.scrollX;
-            if (left + popWidth > window.innerWidth - 12) left = window.innerWidth - popWidth - 12;
-            pop.style.left = left + 'px';
-            pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
-
-            activeColorPicker = pop;
-            setTimeout(() => document.addEventListener('mousedown', handleColorPickerOutsideClick, true), 0);
-        }
-
-        function addNode() {
-            const themeOrder = [2, 3, 4, 5, 6, 7, 0, 1]; // start from the accent hues, neutrals last
-            const themeIndex = themeOrder[nodes.length % themeOrder.length];
-            nodes.push({ name: `Node ${nodes.length + 1}`, color: { themeIndex, variant: 'base' } });
-            renderNodes();
-            saveToLocalStorage();
-            generateDiagram();
-            const inputs = document.querySelectorAll('#nodes-list .field-input');
-            const lastInput = inputs[inputs.length - 1];
-            if (lastInput) { lastInput.focus(); lastInput.select(); }
-        }
-
-        function updateNodeName(index, newName) {
-            if (!newName.trim()) return;
-            const oldName = nodes[index].name;
-            nodes[index].name = newName.trim();
-            links.forEach(l => {
-                if (l.source === oldName) l.source = nodes[index].name;
-                if (l.target === oldName) l.target = nodes[index].name;
-            });
-            saveToLocalStorage();
-            updateFlowSelects();
-            generateDiagram();
-        }
-
-        function updateNodeColor(index, newColor) {
-            nodes[index].color = newColor;
-            saveToLocalStorage();
-            generateDiagram();
-        }
-
-        function deleteNode(index) {
-            const name = nodes[index].name;
-            nodes.splice(index, 1);
-            links = links.filter(l => l.source !== name && l.target !== name);
-            renderNodes();
-            renderFlowsTable();
-            saveToLocalStorage();
-            generateDiagram();
-        }
-
-        function renderFlowsTable() {
-            if (isV3Mode()) {
-                // Update header for v3 (From, FromCol, →, To, ToCol, Value, Delete)
-                const head = document.getElementById('flows-table-head');
-                if (head) head.innerHTML = `<tr>
-                    <th class="px-2 py-1.5 text-left text-[10px]">From</th>
-                    <th class="px-2 py-1.5 text-left text-[10px] w-16">Col</th>
-                    <th class="w-5"></th>
-                    <th class="px-2 py-1.5 text-left text-[10px]">To</th>
-                    <th class="px-2 py-1.5 text-left text-[10px] w-16">Col</th>
-                    <th class="px-2 py-1.5 text-left text-[10px] w-14">Value</th>
-                    <th class="w-8"></th>
-                </tr>`;
-                renderSeriesFlowsTable();
-                return;
-            }
-            // Restore v2 header
-            const head = document.getElementById('flows-table-head');
-            if (head) head.innerHTML = `<tr>
-                <th class="px-2 py-1.5 text-left text-[10px]">From</th>
-                <th class="px-2 py-1.5 text-left text-[10px]">To</th>
-                <th class="px-2 py-1.5 text-left text-[10px] w-16">Value</th>
-                <th class="w-8"></th>
-            </tr>`;
-            const tbody = document.getElementById('flows-table-body');
+        // ---- Smart table render ----
+        function renderSmartTable() {
+            const tbody = document.getElementById('smart-table-body');
+            if (!tbody) return;
             tbody.innerHTML = '';
 
-            if (links.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">No flows yet — add one to connect two nodes</div></td></tr>`;
+            // Render each existing link row
+            links.forEach((link, i) => {
+                tbody.appendChild(buildSmartRow(i, link.source, link.target, link.value));
+            });
+
+            // Always append one blank sentinel row at the bottom
+            tbody.appendChild(buildSmartRow(-1, '', '', ''));
+        }
+
+        function buildSmartRow(rowIndex, sourceName, targetName, value) {
+            const tr = document.createElement('tr');
+            tr.dataset.rowIndex = rowIndex;
+            if (rowIndex >= 0) {
+                tr.addEventListener('mouseenter', () => highlightRibbon(rowIndex, true));
+                tr.addEventListener('mouseleave', () => highlightRibbon(rowIndex, false));
+            }
+
+            const sourceColor = sourceName && nodeRegistry[sourceName] ? resolveThemeColor(nodeRegistry[sourceName].color) : null;
+            const targetColor = targetName && nodeRegistry[targetName] ? resolveThemeColor(nodeRegistry[targetName].color) : null;
+
+            tr.innerHTML = `
+                <td>
+                    <div class="node-cell">
+                        <span class="node-dot ${sourceColor ? '' : 'unset'}"
+                              style="${sourceColor ? `background:${sourceColor}` : ''}"
+                              data-node="${escapeAttr(sourceName)}"
+                              onclick="openNodeColorDot(this)"></span>
+                        <input class="node-input" type="text" value="${escapeAttr(sourceName)}"
+                               placeholder="Source"
+                               data-field="source" data-row="${rowIndex}"
+                               autocomplete="off"
+                               oninput="onNodeInput(this)"
+                               onblur="onNodeBlur(this)"
+                               onkeydown="onNodeKey(event, this)">
+                    </div>
+                </td>
+                <td class="td-arrow">→</td>
+                <td>
+                    <div class="node-cell">
+                        <span class="node-dot ${targetColor ? '' : 'unset'}"
+                              style="${targetColor ? `background:${targetColor}` : ''}"
+                              data-node="${escapeAttr(targetName)}"
+                              onclick="openNodeColorDot(this)"></span>
+                        <input class="node-input" type="text" value="${escapeAttr(targetName)}"
+                               placeholder="Target"
+                               data-field="target" data-row="${rowIndex}"
+                               autocomplete="off"
+                               oninput="onNodeInput(this)"
+                               onblur="onNodeBlur(this)"
+                               onkeydown="onNodeKey(event, this)">
+                    </div>
+                </td>
+                <td class="td-value">
+                    <input class="value-input" type="number" value="${value !== '' ? value : ''}"
+                           placeholder="0" min="0" step="any"
+                           data-row="${rowIndex}"
+                           onchange="onValueChange(this)"
+                           onblur="onValueChange(this)"
+                           onfocus="onSentinelFocus(this)">
+                </td>
+                <td class="td-del">
+                    ${rowIndex >= 0 ? `<button class="row-del-btn" onclick="deleteSmartRow(${rowIndex})" title="Delete row">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>` : ''}
+                </td>
+            `;
+            return tr;
+        }
+
+        // ---- Autocomplete ----
+        let acActiveInput = null;
+        let acActiveIndex = -1;
+
+        function onNodeInput(input) {
+            const val = input.value;
+            const rowIndex = parseInt(input.dataset.row, 10);
+
+            // If this is the sentinel row and user starts typing, materialise it
+            if (rowIndex < 0 && val.trim()) {
+                materializeSentinel(input);
                 return;
             }
 
-            links.forEach((link, index) => {
-                const row = document.createElement('tr');
-                row.className = 'interactive-row';
-                row.innerHTML = `
-                    <td class="px-1 py-0.5">
-                        <select class="field-select" onchange="updateLink(${index}, 'source', this.value)">
-                            ${createNodeOptions(link.source)}
-                        </select>
-                    </td>
-                    <td class="px-1 py-0.5">
-                        <select class="field-select" onchange="updateLink(${index}, 'target', this.value)">
-                            ${createNodeOptions(link.target)}
-                        </select>
-                    </td>
-                    <td class="px-1 py-0.5">
-                        <input type="number" value="${link.value}" step="any" min="0" class="field-select font-semibold"
-                               onchange="updateLink(${index}, 'value', parseFloat(this.value) || 0)">
-                    </td>
-                    <td class="text-center">
-                        <button onclick="deleteLink(${index})" class="btn-icon" title="Delete flow">
-                            <i class="fa-solid fa-xmark text-xs"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+            showAutocomplete(input, val);
         }
 
-        function createNodeOptions(selected) {
-            let html = `<option value="">— Select —</option>`;
-            nodes.forEach(n => {
-                html += `<option value="${n.name}" ${n.name === selected ? 'selected' : ''}>${n.name}</option>`;
-            });
-            return html;
+        function showAutocomplete(input, query) {
+            const ac = document.getElementById('node-autocomplete');
+            const allNames = Object.keys(nodeRegistry).filter(n => n !== input.value);
+            const matches = query.trim()
+                ? allNames.filter(n => n.toLowerCase().includes(query.toLowerCase()))
+                : allNames;
+
+            if (matches.length === 0) { ac.style.display = 'none'; return; }
+
+            const rect = input.getBoundingClientRect();
+            ac.style.display = 'block';
+            ac.style.left = rect.left + 'px';
+            ac.style.top = (rect.bottom + 4) + 'px';
+            ac.style.width = Math.max(rect.width, 160) + 'px';
+            acActiveInput = input;
+            acActiveIndex = -1;
+
+            ac.innerHTML = matches.map((name, i) => {
+                const color = nodeRegistry[name] ? resolveThemeColor(nodeRegistry[name].color) : '#e7e3d8';
+                return `<div class="autocomplete-item" data-name="${escapeAttr(name)}" onclick="selectAutocomplete('${escapeAttr(name)}')">
+                    <span class="autocomplete-dot" style="background:${color}"></span>
+                    ${escapeHtml(name)}
+                </div>`;
+            }).join('');
         }
 
-        function updateFlowSelects() { renderFlowsTable(); }
+        function selectAutocomplete(name) {
+            if (!acActiveInput) return;
+            acActiveInput.value = name;
+            hideAutocomplete();
+            onNodeBlur(acActiveInput);
+        }
 
-        function addFlowRow() {
-            if (nodes.length < 2) { alert("Add at least two nodes first."); return; }
-            links.push({ source: nodes[0].name, target: nodes[1].name, value: 100 });
-            renderFlowsTable();
+        function hideAutocomplete() {
+            document.getElementById('node-autocomplete').style.display = 'none';
+            acActiveInput = null;
+            acActiveIndex = -1;
+        }
+
+        function onNodeKey(e, input) {
+            const ac = document.getElementById('node-autocomplete');
+            if (ac.style.display === 'none') return;
+            const items = ac.querySelectorAll('.autocomplete-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                acActiveIndex = Math.min(acActiveIndex + 1, items.length - 1);
+                items.forEach((it, i) => it.classList.toggle('is-active', i === acActiveIndex));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                acActiveIndex = Math.max(acActiveIndex - 1, 0);
+                items.forEach((it, i) => it.classList.toggle('is-active', i === acActiveIndex));
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                if (acActiveIndex >= 0 && items[acActiveIndex]) {
+                    e.preventDefault();
+                    selectAutocomplete(items[acActiveIndex].dataset.name);
+                } else {
+                    hideAutocomplete();
+                }
+            } else if (e.key === 'Escape') {
+                hideAutocomplete();
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#node-autocomplete') && !e.target.closest('.node-input')) {
+                hideAutocomplete();
+            }
+        }, true);
+
+        // ---- Row materialise / blur / delete ----
+        function materializeSentinel(inputInSentinel) {
+            // Add a new blank link and re-render; focus will be restored by the caller
+            const row = inputInSentinel.closest('tr');
+            const field = inputInSentinel.dataset.field;
+            const val = inputInSentinel.value.trim();
+            links.push({ source: field === 'source' ? val : '', target: field === 'target' ? val : '', value: 0 });
+            ensureNode(val);
+            syncNodesFromRegistry();
+            renderSmartTable();
+            saveToLocalStorage();
+            generateDiagram();
+            // Re-focus the correct input in the new row
+            const newRow = document.querySelector(`#smart-table-body tr[data-row-index="${links.length - 1}"]`);
+            if (newRow) {
+                const inp = newRow.querySelector(`input[data-field="${field}"]`);
+                if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+            }
+        }
+
+        function onNodeBlur(input) {
+            setTimeout(() => {
+                // Delay so autocomplete click can fire first
+                if (document.activeElement && document.activeElement.closest('#node-autocomplete')) return;
+                hideAutocomplete();
+                commitNodeInput(input);
+            }, 120);
+        }
+
+        function commitNodeInput(input) {
+            const rowIndex = parseInt(input.dataset.row, 10);
+            const field = input.dataset.field;
+            const name = input.value.trim();
+            if (rowIndex < 0) return; // sentinel
+            if (!name) {
+                // Empty source or target: leave as-is, don't commit
+                return;
+            }
+            ensureNode(name);
+            links[rowIndex][field] = name;
+            syncNodesFromRegistry();
+            renderSmartTable();
             saveToLocalStorage();
             generateDiagram();
         }
 
+        function onValueChange(input) {
+            const rowIndex = parseInt(input.dataset.row, 10);
+            if (rowIndex < 0) return;
+            const v = parseFloat(input.value);
+            links[rowIndex].value = isNaN(v) ? 0 : v;
+            saveToLocalStorage();
+            generateDiagram();
+        }
+
+        function onSentinelFocus(input) {
+            // If the value field of the sentinel gets focus, materialise it if source+target are set
+            // For now just leave blank — user will tab/type through source/target first
+        }
+
+        function deleteSmartRow(rowIndex) {
+            links.splice(rowIndex, 1);
+            syncNodesFromRegistry();
+            renderSmartTable();
+            saveToLocalStorage();
+            generateDiagram();
+        }
+
+        // ---- Node color from dot ----
+        function openNodeColorDot(dotEl) {
+            const name = dotEl.dataset.node;
+            if (!name) return;
+            ensureNode(name);
+            const colorRef = nodeRegistry[name].color;
+            openColorPicker(dotEl, colorRef, (newRef) => {
+                nodeRegistry[name].color = newRef;
+                syncNodesFromRegistry();
+                renderSmartTable();
+                saveToLocalStorage();
+                generateDiagram();
+            });
+        }
+
+        // ---- Row ↔ ribbon hover highlight ----
+        function highlightRibbon(rowIndex, on) {
+            const svg = document.getElementById('sankey-svg');
+            if (!svg) return;
+            const ribbons = svg.querySelectorAll(`[data-link-index="${rowIndex}"]`);
+            ribbons.forEach(r => r.classList.toggle('is-highlighted', on));
+            // Also highlight the row
+            const row = document.querySelector(`#smart-table-body tr[data-row-index="${rowIndex}"]`);
+            if (row) row.classList.toggle('row-highlighted', on);
+        }
+
+        // ---- Compat shims (called elsewhere) ----
+        function renderNodes() {
+            if (isV3Mode()) return;
+            renderSmartTable();
+        }
+        function renderFlowsTable() {
+            if (isV3Mode()) { renderDataPanel(); return; }
+            renderSmartTable();
+        }
+        function updateFlowSelects() { renderSmartTable(); }
+        function addFlowRow() {
+            links.push({ source: '', target: '', value: 0 });
+            renderSmartTable();
+        }
         function updateLink(index, field, value) {
             links[index][field] = value;
-            saveToLocalStorage();
-            generateDiagram();
+            saveToLocalStorage(); generateDiagram();
         }
-
         function deleteLink(index) {
             links.splice(index, 1);
-            renderFlowsTable();
-            saveToLocalStorage();
-            generateDiagram();
+            syncNodesFromRegistry(); renderSmartTable(); saveToLocalStorage(); generateDiagram();
         }
+
 
         // Measures text width using an offscreen canvas so we can size layout margins
         // BEFORE layout runs, instead of discovering labels don't fit after the fact.
@@ -1952,14 +1845,12 @@
                 const x0 = colX[r.sRank], x1 = colX[r.tRank];
                 const d = ribbonPath(x0, x1, r);
                 const filterAttr = ribbonStyle === 'classic' ? ' filter="url(#sk-brush-filter)"' : (ribbonStyle === 'modern' ? ' filter="url(#sk-glass-shadow)"' : '');
-                svg += `<path d="${d}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}"${filterAttr} class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
+                // Find the index in links[] for row-hover highlighting
+                const linkIdx = links.findIndex(l => l.source === r.source && l.target === r.target);
+                const linkIdxAttr = linkIdx >= 0 ? ` data-link-index="${linkIdx}"` : '';
+                svg += `<path d="${d}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}"${filterAttr}${linkIdxAttr} class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
                 if (ribbonStyle === 'modern') {
-                    // Sheen overlay shares the exact same path so it's perfectly clipped to the
-                    // ribbon's own shape, never spilling onto neighboring flows or nodes. It
-                    // carries the same data-source/data-target so hover highlighting dims it
-                    // in sync with its parent ribbon rather than staying full-opacity over a
-                    // dimmed flow.
-                    svg += `<path d="${d}" fill="url(#sk-glass-sheen)" class="sk-ribbon sk-ribbon-sheen" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}" style="pointer-events:none;"/>`;
+                    svg += `<path d="${d}" fill="url(#sk-glass-sheen)" class="sk-ribbon sk-ribbon-sheen"${linkIdxAttr} data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}" style="pointer-events:none;"/>`;
                 }
             });
 
@@ -2213,7 +2104,7 @@
                         seriesColumns = null; seriesModel = null; seriesFlows = null;
                         nodes = data.nodes; links = data.links;
                         columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
-                        renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
+                        syncNodesFromRegistry(); renderSmartTable(); saveToLocalStorage(); generateDiagram();
                     } else {
                         throw new Error("This data file is from an older, incompatible version. Please re-create it in the current version.");
                     }
@@ -2250,7 +2141,7 @@
                     const allValidHex = data.themePalette.every(c => /^#[0-9a-fA-F]{6}$/.test(c));
                     if (!allValidHex) throw new Error("Theme file contains an invalid color value.");
                     themePalette = data.themePalette;
-                    saveToLocalStorage(); renderNodes(); generateDiagram(); syncSystemThemeSelect();
+                    saveToLocalStorage(); renderSmartTable(); generateDiagram(); syncSystemThemeSelect();
                 } catch (err) { alert("Couldn't load this theme: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
@@ -2334,52 +2225,37 @@
             nodes = []; links = []; columnLabels = [];
             seriesColumns = null; seriesModel = null; seriesFlows = null;
             localStorage.removeItem('sankeyWorkspaceData_v15');
-            renderNodes(); renderFlowsTable();
+            renderSmartTable();
             document.getElementById('sankey-chart').innerHTML = '';
         }
 
         function loadDefaultExample() {
-            seriesColumns = [
-                { id: 0, label: '2015' },
-                { id: 1, label: '2019' },
-                { id: 2, label: '2024' }
+            // Simple illustrative example using the smart table (flat v2 model).
+            // A concise income/allocation diagram that demonstrates the tool clearly.
+            seriesColumns = null; seriesModel = null; seriesFlows = null;
+            nodeRegistry = {
+                'Revenue':         { color: { themeIndex: 4, variant: 'base' } },
+                'Services':        { color: { themeIndex: 7, variant: 'base' } },
+                'Product Sales':   { color: { themeIndex: 6, variant: 'base' } },
+                'R&D':             { color: { themeIndex: 5, variant: 'base' } },
+                'Operations':      { color: { themeIndex: 1, variant: 'base' } },
+                'Sales & Mktg':    { color: { themeIndex: 2, variant: 'base' } },
+                'Gross Profit':    { color: { themeIndex: 3, variant: 'base' } },
+            };
+            nodes = Object.entries(nodeRegistry).map(([name, v]) => ({ name, color: v.color }));
+            links = [
+                { source: 'Revenue',       target: 'Services',      value: 45 },
+                { source: 'Revenue',       target: 'Product Sales',  value: 85 },
+                { source: 'Services',      target: 'R&D',            value: 18 },
+                { source: 'Services',      target: 'Operations',     value: 12 },
+                { source: 'Services',      target: 'Gross Profit',   value: 15 },
+                { source: 'Product Sales', target: 'Sales & Mktg',   value: 30 },
+                { source: 'Product Sales', target: 'Operations',     value: 20 },
+                { source: 'Product Sales', target: 'Gross Profit',   value: 35 },
             ];
-            seriesModel = [
-                { name: 'Aviva',          color: { themeIndex: 2, variant: 'base' },   values: { 0: 50, 1: 70, 2: 90 } },
-                { name: 'Legal & General',color: { themeIndex: 3, variant: 'base' },   values: { 0: 40, 1: 47, 2: 62 } },
-                { name: 'Standard Life',  color: { themeIndex: 5, variant: 'base' },   values: { 0: 35 } },
-                { name: 'Zurich',         color: { themeIndex: 1, variant: 'base' },   values: { 0: 12 } },
-                { name: 'Nest',           color: { themeIndex: 4, variant: 'base' },   values: { 0: 8,  1: 25, 2: 45 } },
-                { name: 'Abrdn',          color: { themeIndex: 5, variant: 'shade0' }, values: { 1: 70, 2: 82 } },
-                { name: 'Smart Pension',  color: { themeIndex: 7, variant: 'base' },   values: { 1: 2,  2: 8  } },
-                { name: 'Asset Growth',   color: { themeIndex: 6, variant: 'tint1' },  values: { 0: 30, 1: 37 } },
-                { name: 'Net New Flows',  color: { themeIndex: 3, variant: 'tint2' },  values: { 0: 10, 1: 15 } },
-            ];
-            // Only genuine cross-series transfers — carry-forwards are now automatic.
-            // Zurich and Standard Life transfer out fully, so they exit (no carry-forward).
-            seriesFlows = [
-                { from: 'Zurich',         fromCol: 0, to: 'Aviva',          toCol: 1, value: 12 },
-                { from: 'Standard Life',  fromCol: 0, to: 'Abrdn',          toCol: 1, value: 35 },
-                { from: 'Asset Growth',   fromCol: 0, to: 'Aviva',          toCol: 1, value: 8  },
-                { from: 'Asset Growth',   fromCol: 0, to: 'Legal & General',toCol: 1, value: 7  },
-                { from: 'Asset Growth',   fromCol: 0, to: 'Abrdn',          toCol: 1, value: 8  },
-                { from: 'Asset Growth',   fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
-                { from: 'Net New Flows',  fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
-                { from: 'Net New Flows',  fromCol: 0, to: 'Smart Pension',  toCol: 1, value: 2  },
-                { from: 'Net New Flows',  fromCol: 0, to: 'Legal & General',toCol: 1, value: 1  },
-                { from: 'Asset Growth',   fromCol: 1, to: 'Aviva',          toCol: 2, value: 10 },
-                { from: 'Asset Growth',   fromCol: 1, to: 'Legal & General',toCol: 2, value: 8  },
-                { from: 'Asset Growth',   fromCol: 1, to: 'Abrdn',          toCol: 2, value: 9  },
-                { from: 'Asset Growth',   fromCol: 1, to: 'Nest',           toCol: 2, value: 10 },
-                { from: 'Net New Flows',  fromCol: 1, to: 'Nest',           toCol: 2, value: 5  },
-                { from: 'Net New Flows',  fromCol: 1, to: 'Smart Pension',  toCol: 2, value: 4  },
-                { from: 'Net New Flows',  fromCol: 1, to: 'Legal & General',toCol: 2, value: 5  },
-                { from: 'Net New Flows',  fromCol: 1, to: 'Aviva',          toCol: 2, value: 2  },
-                { from: 'Net New Flows',  fromCol: 1, to: 'Abrdn',          toCol: 2, value: 2  },
-            ];
-            nodes = []; links = []; columnLabels = [];
+            columnLabels = [];
             paletteMode = 'branded';
-            renderDataPanel();
+            renderSmartTable();
             generateDiagram();
         }
 
@@ -2453,17 +2329,15 @@
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             syncSystemThemeSelect();
             
-            if (nodes.length === 0 && !isV3Mode()) {
+            if (links.length === 0 && !isV3Mode()) {
                 loadDefaultExample();
-                // Re-sync palette buttons since loadDefaultExample sets paletteMode = 'branded'
                 document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
                 document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             } else if (isV3Mode()) {
                 renderDataPanel();
                 generateDiagram();
             } else {
-                renderNodes();
-                renderFlowsTable();
+                renderSmartTable();
                 generateDiagram();
             }
 

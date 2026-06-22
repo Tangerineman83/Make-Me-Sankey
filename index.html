@@ -393,31 +393,32 @@
                 <div class="panel-header">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="panel-title">Nodes</span>
+                            <span id="nodes-panel-title" class="panel-title">Nodes</span>
                             <span id="node-count-badge" class="bg-[#f4f2ed] text-[#7c7766] text-[10.5px] px-1.5 py-0.5 rounded-md font-semibold min-w-[18px] text-center">0</span>
                         </div>
-                        <p class="panel-subtitle">Name, color, and optional value / column</p>
+                        <p id="nodes-panel-subtitle" class="panel-subtitle">Name, color, and optional value / column</p>
                     </div>
-                    <button onclick="addNode()" class="btn-icon" title="Add a node">
+                    <button id="nodes-add-btn" onclick="addNode()" class="btn-icon" title="Add a node">
                         <i class="fa-solid fa-plus text-xs"></i>
                     </button>
                 </div>
+                <div id="columns-editor-row" style="display:none;" class="px-3 pt-2 pb-1 border-b border-[#f0eee6]"></div>
                 <div id="nodes-list" class="p-2.5 space-y-0.5 max-h-[580px] overflow-y-auto"></div>
             </div>
 
             <div class="sankey-col-flows panel p-0 flex flex-col">
                 <div class="panel-header">
                     <div>
-                        <span class="panel-title">Flows</span>
-                        <p class="panel-subtitle">How much moves from one node to another</p>
+                        <span id="flows-panel-title" class="panel-title">Flows</span>
+                        <p id="flows-panel-subtitle" class="panel-subtitle">How much moves from one node to another</p>
                     </div>
-                    <button onclick="addFlowRow()" class="btn btn-ghost" style="background:#f4f2ed;">
-                        <i class="fa-solid fa-circle-plus text-[11px]"></i><span>Add flow</span>
+                    <button id="flows-add-btn" onclick="addFlowRow()" class="btn btn-ghost" style="background:#f4f2ed;">
+                        <i class="fa-solid fa-circle-plus text-[11px]"></i><span id="flows-add-label">Add flow</span>
                     </button>
                 </div>
                 <div class="p-2.5 flex-1 overflow-x-auto">
                     <table class="w-full text-xs border-separate" style="border-spacing: 0 1px; table-layout: fixed;">
-                        <thead class="text-[#9a9484] font-semibold uppercase tracking-wider">
+                        <thead id="flows-table-head" class="text-[#9a9484] font-semibold uppercase tracking-wider">
                             <tr>
                                 <th class="px-2 py-1.5 text-left text-[10px]">From</th>
                                 <th class="px-2 py-1.5 text-left text-[10px]">To</th>
@@ -491,6 +492,49 @@
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
         let activeGradientsCache = [];
+
+        // ---- V3 series model ----
+        // The v3 data model separates identity (a named series like "Aviva") from instances
+        // (Aviva at 2015, Aviva at 2019, Aviva at 2024). This allows a node to carry a single
+        // name, color, and definition while appearing at multiple columns with different values,
+        // rather than requiring "Aviva (2015)" / "Aviva (2019)" as separate identities that
+        // happen to share a display name. When seriesModel is non-null, the app operates in
+        // v3 mode; compileSeriesModel() expands it into the existing nodes/links/columnLabels
+        // arrays that the rendering engine uses, then generateDiagram() runs unchanged.
+        let seriesColumns = null; // [{id: 0, label: "2015"}, ...]
+        let seriesModel   = null; // [{name, color, values: {"0": 50, "1": 70}}, ...]
+        let seriesFlows   = null; // [{from, fromCol, to, toCol, value}, ...]
+
+        function isV3Mode() { return seriesModel !== null; }
+
+        function compileSeriesModel() {
+            if (!seriesModel) return;
+            nodes = [];
+            const nodeKey = {};
+            seriesModel.forEach(s => {
+                Object.entries(s.values || {}).forEach(([colIdStr, val]) => {
+                    const colId = parseInt(colIdStr, 10);
+                    const internal = `${s.name}@${colId}`;
+                    nodeKey[`${s.name}:${colId}`] = internal;
+                    nodes.push({
+                        name: internal,
+                        displayName: s.name,
+                        color: s.color,
+                        value: val,
+                        column: colId
+                    });
+                });
+            });
+            links = (seriesFlows || []).map(f => ({
+                source: nodeKey[`${f.from}:${f.fromCol}`],
+                target: nodeKey[`${f.to}:${f.toCol}`],
+                value: f.value
+            })).filter(l => l.source && l.target);
+            columnLabels = [];
+            if (seriesColumns) {
+                seriesColumns.forEach(c => { columnLabels[c.id] = c.label || ''; });
+            }
+        }
 
         // ---- Theme palette ----
         // The single source of truth for "Branded" mode colors. Nodes don't store a literal
@@ -608,7 +652,19 @@
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, columnLabels, globalOpacityValue, paletteMode, ribbonStyle, themePalette })); } catch (e) {}
+            try {
+                const payload = { globalOpacityValue, paletteMode, ribbonStyle, themePalette };
+                if (isV3Mode()) {
+                    payload.seriesColumns = seriesColumns;
+                    payload.seriesModel   = seriesModel;
+                    payload.seriesFlows   = seriesFlows;
+                } else {
+                    payload.nodes = nodes;
+                    payload.links = links;
+                    payload.columnLabels = columnLabels;
+                }
+                localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify(payload));
+            } catch (e) {}
         }
 
         function loadFromLocalStorage() {
@@ -616,14 +672,20 @@
                 const saved = localStorage.getItem('sankeyWorkspaceData_v15');
                 if (saved) {
                     const data = JSON.parse(saved);
-                    nodes = data.nodes || [];
-                    links = data.links || [];
-                    columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
-                    if (Array.isArray(data.themePalette) && data.themePalette.length === 8) {
-                        themePalette = data.themePalette;
+                    if (Array.isArray(data.themePalette) && data.themePalette.length === 8) themePalette = data.themePalette;
+                    if (data.seriesModel) {
+                        seriesColumns = data.seriesColumns || [];
+                        seriesModel   = data.seriesModel;
+                        seriesFlows   = data.seriesFlows || [];
+                        nodes = []; links = []; columnLabels = [];
+                    } else {
+                        nodes = data.nodes || [];
+                        links = data.links || [];
+                        columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
+                        seriesColumns = null; seriesModel = null; seriesFlows = null;
                     }
                 }
             } catch (e) {}
@@ -690,6 +752,197 @@
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             generateDiagram();
             saveToLocalStorage();
+        }
+
+        // ---- V3 editor mode switching ----
+        function switchEditorMode(v3) {
+            document.getElementById('nodes-panel-title').textContent = v3 ? 'Series' : 'Nodes';
+            document.getElementById('nodes-panel-subtitle').textContent = v3 ? 'Node groups that persist across columns' : 'Name, color, and optional value / column';
+            document.getElementById('flows-panel-title').textContent = v3 ? 'Flows' : 'Flows';
+            document.getElementById('flows-panel-subtitle').textContent = v3 ? 'Connections between series at specific columns' : 'How much moves from one node to another';
+            const addBtn = document.getElementById('nodes-add-btn');
+            if (v3) { addBtn.setAttribute('onclick', 'addSeries()'); addBtn.title = 'Add a series'; }
+            else    { addBtn.setAttribute('onclick', 'addNode()');   addBtn.title = 'Add a node'; }
+            const flowsBtn = document.getElementById('flows-add-btn');
+            if (v3) { flowsBtn.setAttribute('onclick', 'addSeriesFlow()'); }
+            else    { flowsBtn.setAttribute('onclick', 'addFlowRow()'); }
+            document.getElementById('flows-add-label').textContent = v3 ? 'Add flow' : 'Add flow';
+            document.getElementById('columns-editor-row').style.display = v3 ? 'block' : 'none';
+        }
+
+        function renderColumnsEditor() {
+            const row = document.getElementById('columns-editor-row');
+            if (!row || !seriesColumns) return;
+            let html = `<div class="flex flex-wrap items-center gap-2 pb-1">
+                <span class="text-[10px] font-bold text-[#b3ad9c] uppercase tracking-wider">Columns</span>`;
+            seriesColumns.forEach((col, i) => {
+                html += `<div class="flex items-center gap-1">
+                    <input type="text" value="${escapeAttr(col.label || '')}" placeholder="Label"
+                           class="col-label-input" style="width:64px;"
+                           onchange="updateSeriesColumn(${i}, 'label', this.value)">
+                    <button onclick="removeSeriesColumn(${i})" class="btn-icon" style="width:18px;height:18px;font-size:9px;" title="Remove column">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>`;
+            });
+            html += `<button onclick="addSeriesColumn()" class="btn-icon" title="Add column">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                    </button>
+                </div>`;
+            row.innerHTML = html;
+        }
+
+        function renderSeriesEditor() {
+            switchEditorMode(true);
+            renderColumnsEditor();
+            const container = document.getElementById('nodes-list');
+            const badge = document.getElementById('node-count-badge');
+            container.innerHTML = '';
+            if (!seriesModel || seriesModel.length === 0) {
+                badge.innerText = '0';
+                container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-bezier-curve text-lg mb-2 text-[#d8d4c9]"></i><p class="text-xs">No series yet — add one to get started</p></div>`;
+                return;
+            }
+            badge.innerText = seriesModel.length;
+            seriesModel.forEach((s, si) => {
+                const hasOverrides = false;
+                const div = document.createElement('div');
+                div.className = 'node-editor-block';
+                // Build per-column value inputs
+                let valueInputs = '';
+                (seriesColumns || []).forEach(col => {
+                    const val = s.values[col.id] !== undefined ? s.values[col.id] : '';
+                    valueInputs += `<div class="override-field">
+                        <label class="override-label">${escapeAttr(col.label || `Col ${col.id}`)}</label>
+                        <input type="number" min="0" step="any" value="${val}" placeholder="—"
+                               class="field-select override-input"
+                               onchange="updateSeriesValue(${si}, ${col.id}, this.value)">
+                    </div>`;
+                });
+                div.innerHTML = `
+                    <div class="editor-row">
+                        <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(s.color)};"
+                                onclick="openSeriesColorPicker(this, ${si})" title="Change color"></button>
+                        <input type="text" value="${escapeAttr(s.name)}" class="field-input flex-1 min-w-0"
+                               onchange="updateSeriesName(${si}, this.value)">
+                        <button onclick="deleteSeries(${si})" class="btn-icon row-delete" title="Delete series">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+                    <div class="node-overrides" style="display:flex;">
+                        ${valueInputs}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderSeriesFlowsTable() {
+            const tbody = document.getElementById('flows-table-body');
+            tbody.innerHTML = '';
+            if (!seriesFlows || seriesFlows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">No flows yet — add one to connect series</div></td></tr>`;
+                return;
+            }
+            const seriesNames = (seriesModel || []).map(s => s.name);
+            const colIds = (seriesColumns || []).map(c => c.id);
+            seriesFlows.forEach((f, fi) => {
+                const row = document.createElement('tr');
+                row.className = 'interactive-row';
+                const makeSeriesSelect = (field, val) =>
+                    `<select class="field-select" onchange="updateSeriesFlow(${fi}, '${field}', this.value)">
+                        ${seriesNames.map(n => `<option value="${escapeAttr(n)}"${n === val ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('')}
+                    </select>`;
+                const makeColSelect = (field, val) =>
+                    `<select class="field-select" onchange="updateSeriesFlow(${fi}, '${field}', parseInt(this.value))">
+                        ${colIds.map(id => { const lbl = (seriesColumns.find(c=>c.id===id)||{}).label || `Col ${id}`; return `<option value="${id}"${id === val ? ' selected' : ''}>${escapeAttr(lbl)}</option>`; }).join('')}
+                    </select>`;
+                row.innerHTML = `
+                    <td class="px-1 py-0.5">${makeSeriesSelect('from', f.from)}</td>
+                    <td class="px-1 py-0.5">${makeColSelect('fromCol', f.fromCol)}</td>
+                    <td class="px-1 py-0.5 text-[#9a9484] text-xs text-center">→</td>
+                    <td class="px-1 py-0.5">${makeSeriesSelect('to', f.to)}</td>
+                    <td class="px-1 py-0.5">${makeColSelect('toCol', f.toCol)}</td>
+                    <td class="px-1 py-0.5">
+                        <input type="number" value="${f.value}" step="any" min="0" class="field-select font-semibold"
+                               onchange="updateSeriesFlow(${fi}, 'value', parseFloat(this.value) || 0)">
+                    </td>
+                    <td class="text-center">
+                        <button onclick="deleteSeriesFlow(${fi})" class="btn-icon" title="Delete flow">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // ---- V3 series CRUD ----
+        function addSeriesColumn() {
+            const nextId = seriesColumns.length ? Math.max(...seriesColumns.map(c => c.id)) + 1 : 0;
+            seriesColumns.push({ id: nextId, label: '' });
+            renderColumnsEditor(); saveToLocalStorage(); generateDiagram();
+        }
+        function removeSeriesColumn(i) {
+            const colId = seriesColumns[i].id;
+            seriesColumns.splice(i, 1);
+            seriesModel.forEach(s => delete s.values[colId]);
+            seriesFlows = seriesFlows.filter(f => f.fromCol !== colId && f.toCol !== colId);
+            renderSeriesEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        }
+        function updateSeriesColumn(i, field, val) {
+            seriesColumns[i][field] = val;
+            renderColumnsEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        }
+        function addSeries() {
+            const themeOrder = [2, 3, 4, 5, 6, 7, 0, 1];
+            const ti = themeOrder[(seriesModel.length) % themeOrder.length];
+            seriesModel.push({ name: `Series ${seriesModel.length + 1}`, color: { themeIndex: ti, variant: 'base' }, values: {} });
+            renderSeriesEditor(); saveToLocalStorage(); generateDiagram();
+            const inputs = document.querySelectorAll('#nodes-list .field-input');
+            const last = inputs[inputs.length - 1];
+            if (last) { last.focus(); last.select(); }
+        }
+        function updateSeriesName(si, newName) {
+            if (!newName.trim()) return;
+            const old = seriesModel[si].name;
+            seriesModel[si].name = newName.trim();
+            seriesFlows.forEach(f => { if (f.from === old) f.from = newName.trim(); if (f.to === old) f.to = newName.trim(); });
+            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        }
+        function updateSeriesValue(si, colId, rawVal) {
+            const v = parseFloat(rawVal);
+            if (rawVal.trim() === '' || isNaN(v)) delete seriesModel[si].values[colId];
+            else seriesModel[si].values[colId] = v;
+            saveToLocalStorage(); generateDiagram();
+        }
+        function deleteSeries(si) {
+            const name = seriesModel[si].name;
+            seriesModel.splice(si, 1);
+            seriesFlows = seriesFlows.filter(f => f.from !== name && f.to !== name);
+            renderSeriesEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        }
+        function openSeriesColorPicker(triggerEl, si) {
+            openColorPicker(triggerEl, seriesModel[si].color, ref => {
+                seriesModel[si].color = ref;
+                triggerEl.style.background = resolveThemeColor(ref);
+                saveToLocalStorage(); generateDiagram();
+            });
+        }
+        function addSeriesFlow() {
+            if (!seriesModel || seriesModel.length < 1) { alert('Add at least one series first.'); return; }
+            if (!seriesColumns || seriesColumns.length < 2) { alert('Add at least two columns first.'); return; }
+            const colIds = seriesColumns.map(c => c.id).sort((a,b) => a-b);
+            seriesFlows.push({ from: seriesModel[0].name, fromCol: colIds[0], to: seriesModel[0].name, toCol: colIds[1], value: 0 });
+            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        }
+        function updateSeriesFlow(fi, field, val) {
+            seriesFlows[fi][field] = val;
+            saveToLocalStorage(); generateDiagram();
+        }
+        function deleteSeriesFlow(fi) {
+            seriesFlows.splice(fi, 1);
+            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
         }
 
         function renderNodes() {
@@ -1105,6 +1358,29 @@
         }
 
         function renderFlowsTable() {
+            if (isV3Mode()) {
+                // Update header for v3 (From, FromCol, →, To, ToCol, Value, Delete)
+                const head = document.getElementById('flows-table-head');
+                if (head) head.innerHTML = `<tr>
+                    <th class="px-2 py-1.5 text-left text-[10px]">From</th>
+                    <th class="px-2 py-1.5 text-left text-[10px] w-16">Col</th>
+                    <th class="w-5"></th>
+                    <th class="px-2 py-1.5 text-left text-[10px]">To</th>
+                    <th class="px-2 py-1.5 text-left text-[10px] w-16">Col</th>
+                    <th class="px-2 py-1.5 text-left text-[10px] w-14">Value</th>
+                    <th class="w-8"></th>
+                </tr>`;
+                renderSeriesFlowsTable();
+                return;
+            }
+            // Restore v2 header
+            const head = document.getElementById('flows-table-head');
+            if (head) head.innerHTML = `<tr>
+                <th class="px-2 py-1.5 text-left text-[10px]">From</th>
+                <th class="px-2 py-1.5 text-left text-[10px]">To</th>
+                <th class="px-2 py-1.5 text-left text-[10px] w-16">Value</th>
+                <th class="w-8"></th>
+            </tr>`;
             const tbody = document.getElementById('flows-table-body');
             tbody.innerHTML = '';
 
@@ -1286,6 +1562,7 @@
         }
 
         function generateDiagram() {
+            if (isV3Mode()) compileSeriesModel();
             const container = document.getElementById('sankey-chart');
 
             if (!nodes.length || !links.length) {
@@ -1797,8 +2074,9 @@
         }
 
         function exportJSON() {
-            const data = { version: 2, nodes, links };
-            if (columnLabels.length) data.columnLabels = columnLabels;
+            const data = isV3Mode()
+                ? { version: 3, columns: seriesColumns, series: seriesModel, flows: seriesFlows }
+                : (() => { const d = { version: 2, nodes, links }; if (columnLabels.length) d.columnLabels = columnLabels; return d; })();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1824,26 +2102,35 @@
             reader.onload = function(ev) {
                 try {
                     const data = JSON.parse(ev.target.result);
-                    if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
-                    if (data.version !== 2) {
-                        throw new Error("This data file is from an older, incompatible version of the app (node colors used to be plain hex codes; they're now theme palette references). Please re-create or re-export this file in the current version.");
+                    if (data.version === 3) {
+                        // V3 series model
+                        if (!Array.isArray(data.series) || !Array.isArray(data.flows)) throw new Error("V3 file must have 'series' and 'flows' arrays.");
+                        const colorsOk = data.series.every(s => !s.color || (typeof s.color === 'object' && typeof s.color.themeIndex === 'number'));
+                        if (!colorsOk) throw new Error("Series color must be a theme reference {themeIndex, variant}.");
+                        seriesColumns = Array.isArray(data.columns) ? data.columns : [];
+                        seriesModel   = data.series;
+                        seriesFlows   = data.flows;
+                        nodes = []; links = []; columnLabels = [];
+                        paletteMode = 'branded';
+                        renderSeriesEditor();
+                        saveToLocalStorage(); generateDiagram();
+                    } else if (data.version === 2) {
+                        if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
+                        const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
+                        if (!colorRefShapeOk) throw new Error("This data file's node colors aren't in the expected theme-reference format.");
+                        const overridesOk = data.nodes.every(n =>
+                            (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
+                            (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
+                            (n.displayName === undefined || typeof n.displayName === 'string')
+                        );
+                        if (!overridesOk) throw new Error("One or more nodes has an invalid 'value' or 'column' field.");
+                        seriesColumns = null; seriesModel = null; seriesFlows = null;
+                        nodes = data.nodes; links = data.links;
+                        columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
+                        renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
+                    } else {
+                        throw new Error("This data file is from an older, incompatible version. Please re-create it in the current version.");
                     }
-                    const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
-                    if (!colorRefShapeOk) {
-                        throw new Error("This data file's node colors aren't in the expected theme-reference format. Please re-create or re-export this file in the current version.");
-                    }
-                    // node.value, node.column, and node.displayName are optional but must be correct types if present
-                    const overridesOk = data.nodes.every(n =>
-                        (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
-                        (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
-                        (n.displayName === undefined || typeof n.displayName === 'string')
-                    );
-                    if (!overridesOk) {
-                        throw new Error("One or more nodes has an invalid 'value' or 'column' field (must be non-negative numbers if provided).");
-                    }
-                    nodes = data.nodes; links = data.links;
-                    columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
-                    renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
                 } catch (err) { alert("Couldn't load this file: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
@@ -1959,6 +2246,7 @@
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
             nodes = []; links = []; columnLabels = [];
+            seriesColumns = null; seriesModel = null; seriesFlows = null;
             localStorage.removeItem('sankeyWorkspaceData_v15');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
@@ -1966,48 +2254,63 @@
 
         function loadDefaultExample() {
             // UK DC master trust market consolidation: 2015 → 2019 → 2024
-            // Illustrative AUM figures (£bn) showing Zurich's exit into Aviva,
-            // Standard Life + Aberdeen merging into Abrdn, Nest's organic growth,
-            // and Smart Pension appearing as a new entrant in 2019.
-            // node.value pins bar size to declared AUM (accounting for organic growth
-            // and off-diagram events like Aberdeen's contribution to Abrdn).
-            // node.column fixes Smart Pension to the 2019 column despite having no
-            // 2015 predecessors that would otherwise anchor it there automatically.
-            nodes = [
-                { name: "Nest (2015)",            displayName: "Nest",            color: { themeIndex: 4, variant: 'base' },   value: 8  },
-                { name: "Aviva (2015)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'base' },   value: 50 },
-                { name: "Legal & General (2015)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'base' },   value: 40 },
-                { name: "Standard Life (2015)",    displayName: "Standard Life",   color: { themeIndex: 5, variant: 'base' },   value: 35 },
-                { name: "Zurich (2015)",           displayName: "Zurich",          color: { themeIndex: 1, variant: 'shade0' }, value: 12 },
-                { name: "Aviva (2019)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'shade0' }, value: 70 },
-                { name: "Legal & General (2019)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'shade0' }, value: 47 },
-                { name: "Abrdn (2019)",            displayName: "Abrdn",           color: { themeIndex: 5, variant: 'shade0' }, value: 70 },
-                { name: "Nest (2019)",             displayName: "Nest",            color: { themeIndex: 4, variant: 'shade0' }, value: 25 },
-                { name: "Smart Pension (2019)",    displayName: "Smart Pension",   color: { themeIndex: 7, variant: 'base' },   value: 2,  column: 1 },
-                { name: "Aviva (2024)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'shade1' }, value: 90 },
-                { name: "Legal & General (2024)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'shade1' }, value: 62 },
-                { name: "Abrdn (2024)",            displayName: "Abrdn",           color: { themeIndex: 5, variant: 'shade1' }, value: 82 },
-                { name: "Nest (2024)",             displayName: "Nest",            color: { themeIndex: 4, variant: 'shade1' }, value: 45 },
-                { name: "Smart Pension (2024)",    displayName: "Smart Pension",   color: { themeIndex: 7, variant: 'shade0' }, value: 8  },
+            // V3 series model: providers are named once, values declared per column.
+            // Asset Growth and Net New Flows are explicit interim series that make up the
+            // difference between carry-forward amounts and declared end-of-period AUM.
+            // Illustrative figures — designed to test the series model architecture.
+            seriesColumns = [
+                { id: 0, label: '2015' },
+                { id: 1, label: '2019' },
+                { id: 2, label: '2024' }
             ];
-
-            links = [
-                { source: "Nest (2015)",           target: "Nest (2019)",          value: 8  },
-                { source: "Aviva (2015)",             target: "Aviva (2019)",            value: 50 },
-                { source: "Zurich (2015)",            target: "Aviva (2019)",            value: 12 },
-                { source: "Legal & General (2015)",   target: "Legal & General (2019)",  value: 40 },
-                { source: "Standard Life (2015)",     target: "Abrdn (2019)",            value: 35 },
-                { source: "Aviva (2019)",             target: "Aviva (2024)",            value: 70 },
-                { source: "Legal & General (2019)",   target: "Legal & General (2024)",  value: 47 },
-                { source: "Abrdn (2019)",             target: "Abrdn (2024)",            value: 70 },
-                { source: "Nest (2019)",              target: "Nest (2024)",             value: 25 },
-                { source: "Smart Pension (2019)",     target: "Smart Pension (2024)",    value: 2  },
+            seriesModel = [
+                { name: 'Aviva',          color: { themeIndex: 2, variant: 'base' },   values: { 0: 50, 1: 70, 2: 90 } },
+                { name: 'Legal & General',color: { themeIndex: 3, variant: 'base' },   values: { 0: 40, 1: 47, 2: 62 } },
+                { name: 'Standard Life',  color: { themeIndex: 5, variant: 'base' },   values: { 0: 35 } },
+                { name: 'Zurich',         color: { themeIndex: 1, variant: 'base' },   values: { 0: 12 } },
+                { name: 'Nest',           color: { themeIndex: 4, variant: 'base' },   values: { 0: 8,  1: 25, 2: 45 } },
+                { name: 'Abrdn',          color: { themeIndex: 5, variant: 'shade0' }, values: { 1: 70, 2: 82 } },
+                { name: 'Smart Pension',  color: { themeIndex: 7, variant: 'base' },   values: { 1: 2,  2: 8  } },
+                { name: 'Asset Growth',   color: { themeIndex: 6, variant: 'tint1' },  values: { 0: 30, 1: 37 } },
+                { name: 'Net New Flows',  color: { themeIndex: 3, variant: 'tint2' },  values: { 0: 10, 1: 15 } },
             ];
-
+            seriesFlows = [
+                // Carry-forwards (existing assets moving through each period)
+                { from: 'Aviva',          fromCol: 0, to: 'Aviva',          toCol: 1, value: 50 },
+                { from: 'Legal & General',fromCol: 0, to: 'Legal & General',toCol: 1, value: 40 },
+                { from: 'Standard Life',  fromCol: 0, to: 'Abrdn',          toCol: 1, value: 35 }, // SL→Abrdn merger
+                { from: 'Zurich',         fromCol: 0, to: 'Aviva',          toCol: 1, value: 12 }, // Zurich exit→Aviva
+                { from: 'Nest',           fromCol: 0, to: 'Nest',           toCol: 1, value: 8  },
+                { from: 'Aviva',          fromCol: 1, to: 'Aviva',          toCol: 2, value: 70 },
+                { from: 'Legal & General',fromCol: 1, to: 'Legal & General',toCol: 2, value: 47 },
+                { from: 'Abrdn',          fromCol: 1, to: 'Abrdn',          toCol: 2, value: 70 },
+                { from: 'Nest',           fromCol: 1, to: 'Nest',           toCol: 2, value: 25 },
+                { from: 'Smart Pension',  fromCol: 1, to: 'Smart Pension',  toCol: 2, value: 2  },
+                // Asset growth 2015→2019 (market returns allocating to each provider)
+                { from: 'Asset Growth',   fromCol: 0, to: 'Aviva',          toCol: 1, value: 8  },
+                { from: 'Asset Growth',   fromCol: 0, to: 'Legal & General',toCol: 1, value: 7  },
+                { from: 'Asset Growth',   fromCol: 0, to: 'Abrdn',          toCol: 1, value: 8  }, // incl. Aberdeen assets
+                { from: 'Asset Growth',   fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
+                // Net new flows 2015→2019 (new member contributions)
+                { from: 'Net New Flows',  fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
+                { from: 'Net New Flows',  fromCol: 0, to: 'Smart Pension',  toCol: 1, value: 2  },
+                { from: 'Net New Flows',  fromCol: 0, to: 'Legal & General',toCol: 1, value: 1  },
+                // Asset growth 2019→2024
+                { from: 'Asset Growth',   fromCol: 1, to: 'Aviva',          toCol: 2, value: 10 },
+                { from: 'Asset Growth',   fromCol: 1, to: 'Legal & General',toCol: 2, value: 8  },
+                { from: 'Asset Growth',   fromCol: 1, to: 'Abrdn',          toCol: 2, value: 9  },
+                { from: 'Asset Growth',   fromCol: 1, to: 'Nest',           toCol: 2, value: 10 },
+                // Net new flows 2019→2024
+                { from: 'Net New Flows',  fromCol: 1, to: 'Nest',           toCol: 2, value: 5  },
+                { from: 'Net New Flows',  fromCol: 1, to: 'Smart Pension',  toCol: 2, value: 4  },
+                { from: 'Net New Flows',  fromCol: 1, to: 'Legal & General',toCol: 2, value: 5  },
+                { from: 'Net New Flows',  fromCol: 1, to: 'Aviva',          toCol: 2, value: 2  },
+                { from: 'Net New Flows',  fromCol: 1, to: 'Abrdn',          toCol: 2, value: 2  },
+            ];
+            nodes = []; links = []; columnLabels = [];
             paletteMode = 'branded';
-            columnLabels = ['2015', '2019', '2024'];
 
-            renderNodes();
+            renderSeriesEditor();
             renderFlowsTable();
             generateDiagram();
         }
@@ -2082,11 +2385,15 @@
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             syncSystemThemeSelect();
             
-            if (nodes.length === 0) {
+            if (nodes.length === 0 && !isV3Mode()) {
                 loadDefaultExample();
                 // Re-sync palette buttons since loadDefaultExample sets paletteMode = 'branded'
                 document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
                 document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
+            } else if (isV3Mode()) {
+                renderSeriesEditor();
+                renderFlowsTable();
+                generateDiagram();
             } else {
                 renderNodes();
                 renderFlowsTable();

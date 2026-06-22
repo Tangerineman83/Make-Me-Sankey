@@ -1843,33 +1843,46 @@
         }
 
         function loadDefaultExample() {
+            // UK DC master trust market consolidation: 2015 → 2019 → 2024
+            // Illustrative AUM figures (£bn) showing Zurich's exit into Aviva,
+            // Standard Life + Aberdeen merging into Abrdn, Nest's organic growth,
+            // and Smart Pension appearing as a new entrant in 2019.
+            // node.value pins bar size to declared AUM (accounting for organic growth
+            // and off-diagram events like Aberdeen's contribution to Abrdn).
+            // node.column fixes Smart Pension to the 2019 column despite having no
+            // 2015 predecessors that would otherwise anchor it there automatically.
             nodes = [
-                { name: "iPhone", color: { themeIndex: 0, variant: 'base' } },
-                { name: "Mac", color: { themeIndex: 1, variant: 'base' } },
-                { name: "iPad", color: { themeIndex: 4, variant: 'base' } },
-                { name: "Wearables & Home", color: { themeIndex: 6, variant: 'base' } },
-                { name: "Services", color: { themeIndex: 5, variant: 'base' } },
-                { name: "Direct Channel (Retail/Web)", color: { themeIndex: 4, variant: 'shade0' } },
-                { name: "Indirect Channel (Carriers)", color: { themeIndex: 1, variant: 'shade0' } },
-                { name: "Gross Margin (Profit)", color: { themeIndex: 3, variant: 'base' } },
-                { name: "Cost of Sales", color: { themeIndex: 2, variant: 'base' } }
+                { name: "Nest (2015)",                color: { themeIndex: 4, variant: 'base' },   value: 8  },
+                { name: "Aviva (2015)",               color: { themeIndex: 2, variant: 'base' },   value: 50 },
+                { name: "Legal & General (2015)",     color: { themeIndex: 3, variant: 'base' },   value: 40 },
+                { name: "Standard Life (2015)",       color: { themeIndex: 5, variant: 'base' },   value: 35 },
+                { name: "Zurich (2015)",              color: { themeIndex: 1, variant: 'shade0' }, value: 12 },
+                { name: "Aviva (2019)",               color: { themeIndex: 2, variant: 'shade0' }, value: 70 },
+                { name: "Legal & General (2019)",     color: { themeIndex: 3, variant: 'shade0' }, value: 47 },
+                { name: "Abrdn (2019)",               color: { themeIndex: 5, variant: 'shade0' }, value: 70 },
+                { name: "Nest (2019)",                color: { themeIndex: 4, variant: 'shade0' }, value: 25 },
+                { name: "Smart Pension (2019)",       color: { themeIndex: 7, variant: 'base' },   value: 2,  column: 1 },
+                { name: "Aviva (2024)",               color: { themeIndex: 2, variant: 'shade1' }, value: 90 },
+                { name: "Legal & General (2024)",     color: { themeIndex: 3, variant: 'shade1' }, value: 62 },
+                { name: "Abrdn (2024)",               color: { themeIndex: 5, variant: 'shade1' }, value: 82 },
+                { name: "Nest (2024)",                color: { themeIndex: 4, variant: 'shade1' }, value: 45 },
+                { name: "Smart Pension (2024)",       color: { themeIndex: 7, variant: 'shade0' }, value: 8  },
             ];
 
             links = [
-                { source: "iPhone", target: "Direct Channel (Retail/Web)", value: 35.45 },
-                { source: "iPhone", target: "Indirect Channel (Carriers)", value: 165.13 },
-                { source: "Mac", target: "Direct Channel (Retail/Web)", value: 10.00 },
-                { source: "Mac", target: "Indirect Channel (Carriers)", value: 19.36 },
-                { source: "iPad", target: "Direct Channel (Retail/Web)", value: 7.00 },
-                { source: "iPad", target: "Indirect Channel (Carriers)", value: 21.30 },
-                { source: "Wearables & Home", target: "Direct Channel (Retail/Web)", value: 8.00 },
-                { source: "Wearables & Home", target: "Indirect Channel (Carriers)", value: 31.85 },
-                { source: "Services", target: "Direct Channel (Retail/Web)", value: 85.20 },
-                { source: "Direct Channel (Retail/Web)", target: "Gross Margin (Profit)", value: 80.00 },
-                { source: "Direct Channel (Retail/Web)", target: "Cost of Sales", value: 65.65 },
-                { source: "Indirect Channel (Carriers)", target: "Gross Margin (Profit)", value: 89.15 },
-                { source: "Indirect Channel (Carriers)", target: "Cost of Sales", value: 148.49 }
+                { source: "Nest (2015)",             target: "Nest (2019)",             value: 8  },
+                { source: "Aviva (2015)",             target: "Aviva (2019)",            value: 50 },
+                { source: "Zurich (2015)",            target: "Aviva (2019)",            value: 12 },
+                { source: "Legal & General (2015)",   target: "Legal & General (2019)",  value: 40 },
+                { source: "Standard Life (2015)",     target: "Abrdn (2019)",            value: 35 },
+                { source: "Aviva (2019)",             target: "Aviva (2024)",            value: 70 },
+                { source: "Legal & General (2019)",   target: "Legal & General (2024)",  value: 47 },
+                { source: "Abrdn (2019)",             target: "Abrdn (2024)",            value: 70 },
+                { source: "Nest (2019)",              target: "Nest (2024)",             value: 25 },
+                { source: "Smart Pension (2019)",     target: "Smart Pension (2024)",    value: 2  },
             ];
+
+            paletteMode = 'branded';
 
             renderNodes();
             renderFlowsTable();
@@ -1948,6 +1961,9 @@
             
             if (nodes.length === 0) {
                 loadDefaultExample();
+                // Re-sync palette buttons since loadDefaultExample sets paletteMode = 'branded'
+                document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
+                document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             } else {
                 renderNodes();
                 renderFlowsTable();

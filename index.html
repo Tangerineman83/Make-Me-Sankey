@@ -252,6 +252,31 @@
             stroke-width: 1px;
         }
 
+        .sk-col-label {
+            font-family: 'Inter', system-ui, sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            fill: var(--sk-ink-muted);
+        }
+
+        /* Column labels editor row — shown below the controls strip, one input per column */
+        .col-labels-row {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            padding: 6px 0 2px; border-top: 1px solid #f0eee6;
+        }
+        .col-labels-row-title {
+            font-size: 10px; font-weight: 700; color: #b3ad9c;
+            text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+        }
+        .col-label-input {
+            border: 1px solid #e7e3d8; border-radius: 7px; padding: 4px 8px;
+            font-size: 11px; font-weight: 600; color: #1c2127; background: #fff;
+            min-width: 0; width: 80px; text-align: center;
+        }
+        .col-label-input:focus { outline: none; border-color: #9a9484; }
+        .col-label-input::placeholder { color: #d8d4c9; font-weight: 400; }
+
         .sk-label-name {
             font-family: 'Inter', system-ui, sans-serif;
             font-weight: 600;
@@ -443,6 +468,7 @@
                             <span id="opacity-slider-readout" class="text-[11px] font-semibold text-[#5b5648] min-w-[28px] tabular-nums">45%</span>
                         </div>
                     </div>
+                    <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
                 </div>
 
                 <div id="sankey-canvas-shell" class="p-3 relative">
@@ -459,6 +485,7 @@
     <script>
         let nodes = [];
         let links = [];
+        let columnLabels = []; // optional display labels per column index, e.g. ["2015","2019","2024"]
         let chartDiv = null;
         let globalOpacityValue = 0.45; 
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
@@ -581,7 +608,7 @@
         }
 
         function saveToLocalStorage() {
-            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, globalOpacityValue, paletteMode, ribbonStyle, themePalette })); } catch (e) {}
+            try { localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify({ nodes, links, columnLabels, globalOpacityValue, paletteMode, ribbonStyle, themePalette })); } catch (e) {}
         }
 
         function loadFromLocalStorage() {
@@ -591,6 +618,7 @@
                     const data = JSON.parse(saved);
                     nodes = data.nodes || [];
                     links = data.links || [];
+                    columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
@@ -607,6 +635,45 @@
             generateDiagram();
             saveToLocalStorage();
         }
+
+        function renderColumnLabelInputs(numCols) {
+            const row = document.getElementById('col-labels-row');
+            if (!row) return;
+            if (!numCols || numCols < 2) {
+                row.style.display = 'none';
+                return;
+            }
+            row.style.display = 'flex';
+            // Preserve focus state: if user is typing in an input, don't obliterate it.
+            // Only fully rebuild if the column count changed; otherwise just refresh values.
+            const existing = row.querySelectorAll('.col-label-input');
+            if (existing.length !== numCols) {
+                row.innerHTML = `<span class="col-labels-row-title">Column labels</span>`;
+                for (let c = 0; c < numCols; c++) {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'col-label-input';
+                    input.value = columnLabels[c] || '';
+                    input.placeholder = `Col ${c + 1}`;
+                    input.maxLength = 24;
+                    input.dataset.col = c;
+                    input.addEventListener('input', function() {
+                        const col = parseInt(this.dataset.col, 10);
+                        columnLabels[col] = this.value;
+                        saveToLocalStorage();
+                        generateDiagram();
+                    });
+                    row.appendChild(input);
+                }
+            } else {
+                existing.forEach((input, i) => {
+                    if (document.activeElement !== input) {
+                        input.value = columnLabels[i] || '';
+                    }
+                });
+            }
+        }
+
 
         function setPaletteMode(mode) {
             paletteMode = mode === 'branded' ? 'branded' : 'restrained';
@@ -641,7 +708,7 @@
             }
 
             nodes.forEach((node, index) => {
-                const hasOverrides = typeof node.value === 'number' || typeof node.column === 'number';
+                const hasOverrides = typeof node.value === 'number' || typeof node.column === 'number' || !!node.displayName;
                 const div = document.createElement('div');
                 div.className = 'node-editor-block';
                 div.innerHTML = `
@@ -660,6 +727,14 @@
                         </button>
                     </div>
                     <div class="node-overrides" style="display:${hasOverrides ? 'flex' : 'none'};">
+                        <div class="override-field">
+                            <label class="override-label">Display name <span class="override-hint">(shown in diagram)</span></label>
+                            <input type="text" maxlength="40"
+                                   value="${escapeAttr(node.displayName || '')}"
+                                   placeholder="${escapeAttr(node.name)}"
+                                   class="field-select override-input" style="width:120px;"
+                                   onchange="updateNodeOverride(${index}, 'displayName', this.value)">
+                        </div>
                         <div class="override-field">
                             <label class="override-label">Value <span class="override-hint">(pins size)</span></label>
                             <input type="number" min="0" step="any"
@@ -699,6 +774,8 @@
             const val = rawValue.trim();
             if (val === '') {
                 delete nodes[index][field];
+            } else if (field === 'displayName') {
+                nodes[index][field] = val;
             } else {
                 const parsed = field === 'column' ? parseInt(val, 10) : parseFloat(val);
                 if (!isNaN(parsed) && parsed >= 0) {
@@ -706,7 +783,7 @@
                 }
             }
             // Re-render just the expand button state to reflect has-overrides
-            const hasOverrides = typeof nodes[index].value === 'number' || typeof nodes[index].column === 'number';
+            const hasOverrides = typeof nodes[index].value === 'number' || typeof nodes[index].column === 'number' || !!nodes[index].displayName;
             const blocks = document.querySelectorAll('.node-editor-block');
             if (blocks[index]) {
                 const expandBtn = blocks[index].querySelector('.row-expand');
@@ -726,6 +803,7 @@
         function clearNodeOverrides(index) {
             delete nodes[index].value;
             delete nodes[index].column;
+            delete nodes[index].displayName;
             renderNodes();
             saveToLocalStorage();
             generateDiagram();
@@ -1255,6 +1333,16 @@
                 return inflow > 0 ? inflow : outflow;
             }
 
+            // Returns the display label for a node — uses node.displayName when set,
+            // falling back to node.name. This separates visual identity from data identity:
+            // "Aviva (2015)", "Aviva (2019)", "Aviva (2024)" can be three distinct nodes
+            // internally (required for unique link routing) while all displaying as "Aviva"
+            // in the rendered SVG, with the column label providing the time context instead.
+            function displayNameFor(name) {
+                const nodeObj = nodes.find(n => n.name === name);
+                return (nodeObj && nodeObj.displayName && nodeObj.displayName.trim()) ? nodeObj.displayName.trim() : name;
+            }
+
             // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
             // Label font scales down (floored for legibility) when the container is narrow,
             // rather than letting leftMargin/rightMargin grow to fit full-size text regardless
@@ -1327,12 +1415,12 @@
             const wrappedLabel = {};
             let leftWraps = false, rightWraps = false;
             leftNames.forEach(n => {
-                const lines = wrapToFit(n, availableForText);
+                const lines = wrapToFit(displayNameFor(n), availableForText);
                 wrappedLabel[n] = lines;
                 if (lines.length > 1) leftWraps = true;
             });
             rightNames.forEach(n => {
-                const lines = wrapToFit(n, availableForText);
+                const lines = wrapToFit(displayNameFor(n), availableForText);
                 wrappedLabel[n] = lines;
                 if (lines.length > 1) rightWraps = true;
             });
@@ -1364,8 +1452,10 @@
             // No headline/column-header band reserved — the diagram leads with the plot
             // itself rather than a sentence above it (the headline was removed; see the
             // change log for why). topPad is just enough breathing room above the tallest
-            // column so the topmost node/label doesn't touch the canvas edge.
-            const topPad = 18;
+            // column so the topmost node/label doesn't touch the canvas edge — increased
+            // when column labels are active to give them enough vertical room.
+            const hasColLabels = columnLabels.some(l => l && l.trim());
+            const topPad = hasColLabels ? 36 : 18;
             const bottomPad = 18;
             // H is purely content-driven (how many nodes need how much vertical room to stay
             // legible) — it does NOT try to match the container's current height, because the
@@ -1605,9 +1695,37 @@
                 }
             });
 
+            // ---- Column labels (x-axis style, drawn in topPad space above the plot) ----
+            // Only rendered when columnLabels[c] is a non-empty string for a given column.
+            // Font size is capped so a long label can't overflow into an adjacent column's space.
+            if (hasColLabels) {
+                const colLabelY = topPad - 10;
+                const colLabelFontSize = Math.min(12, labelFontSize);
+                const colLabelFont = `600 ${colLabelFontSize}px Inter, system-ui, sans-serif`;
+                for (let c = 0; c < numCols; c++) {
+                    const label = columnLabels[c];
+                    if (!label || !label.trim()) continue;
+                    // Cap label to available column width to avoid overflow; truncate with ellipsis
+                    // if necessary (same pattern as edge label wrapping).
+                    const colBandW = numCols === 1 ? plotWidth
+                        : c === 0 ? (colX[1] - colX[0]) * 0.9
+                        : c === numCols - 1 ? (colX[c] - colX[c - 1]) * 0.9
+                        : ((colX[Math.min(c + 1, numCols - 1)] - colX[Math.max(c - 1, 0)]) / 2) * 0.9;
+                    let displayLabel = label.trim();
+                    if (measureTextWidth(displayLabel, colLabelFont) > colBandW) {
+                        while (displayLabel.length > 1 && measureTextWidth(displayLabel + '\u2026', colLabelFont) > colBandW) {
+                            displayLabel = displayLabel.slice(0, -1);
+                        }
+                        displayLabel += '\u2026';
+                    }
+                    svg += `<text x="${colX[c].toFixed(1)}" y="${colLabelY.toFixed(1)}" text-anchor="middle" class="sk-col-label" font-size="${colLabelFontSize}">${escapeHtml(displayLabel)}</text>`;
+                }
+            }
+
             container.innerHTML = `<svg id="sankey-svg" viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sankey-a11y-summary">${svg}</svg>`;
             chartDiv = container.querySelector('#sankey-svg');
 
+            renderColumnLabelInputs(numCols);
             attachLinkHighlighting();
             renderAccessibleSummary(validLinks);
         }
@@ -1680,6 +1798,7 @@
 
         function exportJSON() {
             const data = { version: 2, nodes, links };
+            if (columnLabels.length) data.columnLabels = columnLabels;
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1713,15 +1832,17 @@
                     if (!colorRefShapeOk) {
                         throw new Error("This data file's node colors aren't in the expected theme-reference format. Please re-create or re-export this file in the current version.");
                     }
-                    // node.value and node.column are optional but must be positive numbers if present
+                    // node.value, node.column, and node.displayName are optional but must be correct types if present
                     const overridesOk = data.nodes.every(n =>
                         (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
-                        (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0))
+                        (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
+                        (n.displayName === undefined || typeof n.displayName === 'string')
                     );
                     if (!overridesOk) {
                         throw new Error("One or more nodes has an invalid 'value' or 'column' field (must be non-negative numbers if provided).");
                     }
                     nodes = data.nodes; links = data.links;
+                    columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
                     renderNodes(); renderFlowsTable(); saveToLocalStorage(); generateDiagram();
                 } catch (err) { alert("Couldn't load this file: " + err.message); }
             };
@@ -1812,6 +1933,7 @@
                 .sk-leader { stroke: #c7c2b8; stroke-width: 1px; }
                 .sk-label-name { font-family: Inter, system-ui, sans-serif; font-weight: 600; fill: #1c2127; letter-spacing: -0.006em; }
                 .sk-label-value { font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; fill: #1c2127; }
+                .sk-col-label { font-family: Inter, system-ui, sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; fill: #767f8c; }
             `;
             clone.insertBefore(styleEl, clone.firstChild);
 
@@ -1836,7 +1958,7 @@
 
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
-            nodes = []; links = []; 
+            nodes = []; links = []; columnLabels = [];
             localStorage.removeItem('sankeyWorkspaceData_v15');
             renderNodes(); renderFlowsTable();
             document.getElementById('sankey-chart').innerHTML = '';
@@ -1852,25 +1974,25 @@
             // node.column fixes Smart Pension to the 2019 column despite having no
             // 2015 predecessors that would otherwise anchor it there automatically.
             nodes = [
-                { name: "Nest (2015)",                color: { themeIndex: 4, variant: 'base' },   value: 8  },
-                { name: "Aviva (2015)",               color: { themeIndex: 2, variant: 'base' },   value: 50 },
-                { name: "Legal & General (2015)",     color: { themeIndex: 3, variant: 'base' },   value: 40 },
-                { name: "Standard Life (2015)",       color: { themeIndex: 5, variant: 'base' },   value: 35 },
-                { name: "Zurich (2015)",              color: { themeIndex: 1, variant: 'shade0' }, value: 12 },
-                { name: "Aviva (2019)",               color: { themeIndex: 2, variant: 'shade0' }, value: 70 },
-                { name: "Legal & General (2019)",     color: { themeIndex: 3, variant: 'shade0' }, value: 47 },
-                { name: "Abrdn (2019)",               color: { themeIndex: 5, variant: 'shade0' }, value: 70 },
-                { name: "Nest (2019)",                color: { themeIndex: 4, variant: 'shade0' }, value: 25 },
-                { name: "Smart Pension (2019)",       color: { themeIndex: 7, variant: 'base' },   value: 2,  column: 1 },
-                { name: "Aviva (2024)",               color: { themeIndex: 2, variant: 'shade1' }, value: 90 },
-                { name: "Legal & General (2024)",     color: { themeIndex: 3, variant: 'shade1' }, value: 62 },
-                { name: "Abrdn (2024)",               color: { themeIndex: 5, variant: 'shade1' }, value: 82 },
-                { name: "Nest (2024)",                color: { themeIndex: 4, variant: 'shade1' }, value: 45 },
-                { name: "Smart Pension (2024)",       color: { themeIndex: 7, variant: 'shade0' }, value: 8  },
+                { name: "Nest (2015)",            displayName: "Nest",            color: { themeIndex: 4, variant: 'base' },   value: 8  },
+                { name: "Aviva (2015)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'base' },   value: 50 },
+                { name: "Legal & General (2015)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'base' },   value: 40 },
+                { name: "Standard Life (2015)",    displayName: "Standard Life",   color: { themeIndex: 5, variant: 'base' },   value: 35 },
+                { name: "Zurich (2015)",           displayName: "Zurich",          color: { themeIndex: 1, variant: 'shade0' }, value: 12 },
+                { name: "Aviva (2019)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'shade0' }, value: 70 },
+                { name: "Legal & General (2019)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'shade0' }, value: 47 },
+                { name: "Abrdn (2019)",            displayName: "Abrdn",           color: { themeIndex: 5, variant: 'shade0' }, value: 70 },
+                { name: "Nest (2019)",             displayName: "Nest",            color: { themeIndex: 4, variant: 'shade0' }, value: 25 },
+                { name: "Smart Pension (2019)",    displayName: "Smart Pension",   color: { themeIndex: 7, variant: 'base' },   value: 2,  column: 1 },
+                { name: "Aviva (2024)",            displayName: "Aviva",           color: { themeIndex: 2, variant: 'shade1' }, value: 90 },
+                { name: "Legal & General (2024)",  displayName: "Legal & General", color: { themeIndex: 3, variant: 'shade1' }, value: 62 },
+                { name: "Abrdn (2024)",            displayName: "Abrdn",           color: { themeIndex: 5, variant: 'shade1' }, value: 82 },
+                { name: "Nest (2024)",             displayName: "Nest",            color: { themeIndex: 4, variant: 'shade1' }, value: 45 },
+                { name: "Smart Pension (2024)",    displayName: "Smart Pension",   color: { themeIndex: 7, variant: 'shade0' }, value: 8  },
             ];
 
             links = [
-                { source: "Nest (2015)",             target: "Nest (2019)",             value: 8  },
+                { source: "Nest (2015)",           target: "Nest (2019)",          value: 8  },
                 { source: "Aviva (2015)",             target: "Aviva (2019)",            value: 50 },
                 { source: "Zurich (2015)",            target: "Aviva (2019)",            value: 12 },
                 { source: "Legal & General (2015)",   target: "Legal & General (2019)",  value: 40 },
@@ -1883,6 +2005,7 @@
             ];
 
             paletteMode = 'branded';
+            columnLabels = ['2015', '2019', '2024'];
 
             renderNodes();
             renderFlowsTable();

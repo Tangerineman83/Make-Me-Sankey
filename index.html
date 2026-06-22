@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>I'm Feeling Sankey!</title>
+    <title>Make Me Sankey!</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
@@ -337,10 +337,64 @@
         }
         @media (min-width: 1024px) {
             .sankey-layout-grid {
-                grid-template-columns: 3fr 4fr 5fr;
-                grid-template-areas: "nodes flows diagram";
+                grid-template-columns: 5fr 4fr;
+                grid-template-areas: "nodes diagram";
             }
+            /* The unified data panel spans the single left area */
+            .sankey-col-nodes { grid-area: nodes !important; }
         }
+
+        /* Spreadsheet grid */
+        #grid-table th, #grid-table td { border-bottom: 1px solid #f0eee6; padding: 0; }
+        #grid-table thead th {
+            background: #fafaf6; padding: 7px 10px; font-size: 10px; font-weight: 700;
+            color: #9a9484; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+        }
+        .grid-series-cell { display: flex; align-items: center; gap: 8px; padding: 5px 8px; min-width: 140px; }
+        .grid-series-name {
+            flex: 1; min-width: 0; border: 1px solid transparent; border-radius: 6px;
+            padding: 3px 5px; font-size: 12px; font-weight: 600; color: #1c2127; background: transparent;
+        }
+        .grid-series-name:hover { background: #f8f7f2; }
+        .grid-series-name:focus { outline: none; border-color: #c7c2b3; background: #fff; }
+        .grid-value-cell { padding: 4px 6px; min-width: 68px; }
+        .grid-value-input {
+            width: 100%; border: 1px solid transparent; border-radius: 6px;
+            padding: 4px 6px; font-size: 12px; font-weight: 500; color: #1c2127;
+            background: transparent; text-align: right; font-family: 'IBM Plex Mono', monospace;
+        }
+        .grid-value-input:hover { background: #f8f7f2; }
+        .grid-value-input:focus { outline: none; border-color: #c7c2b3; background: #fff; }
+        .grid-value-input::placeholder { color: #d8d4c9; }
+        .grid-col-label-input {
+            border: 1px solid transparent; border-radius: 6px; padding: 3px 6px;
+            font-size: 11px; font-weight: 700; color: #1c2127; background: transparent;
+            text-align: center; width: 68px;
+        }
+        .grid-col-label-input:hover { background: #f8f7f2; }
+        .grid-col-label-input:focus { outline: none; border-color: #c7c2b3; background: #fff; }
+        .grid-delete-btn {
+            opacity: 0; width: 20px; height: 20px; border-radius: 5px; color: #c7c2b3;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px;
+        }
+        #grid-table tr:hover .grid-delete-btn { opacity: 1; }
+        .grid-delete-btn:hover { color: #b3503d; background: #fbeeec; }
+        .transfer-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 3px 2px; border-radius: 7px; }
+        .transfer-row:hover { background: #f8f7f2; }
+        .transfer-select {
+            border: 1px solid #e7e3d8; border-radius: 7px; padding: 4px 6px;
+            font-size: 11.5px; font-weight: 500; color: #1c2127; background: #fff; max-width: 110px;
+        }
+        .transfer-col-select {
+            border: 1px solid #e7e3d8; border-radius: 7px; padding: 4px 5px;
+            font-size: 11px; color: #5b5648; background: #f4f2ed; width: 56px;
+        }
+        .transfer-value-input {
+            border: 1px solid #e7e3d8; border-radius: 7px; padding: 4px 6px;
+            font-size: 11.5px; font-weight: 600; color: #1c2127; background: #fff;
+            width: 58px; text-align: right; font-family: 'IBM Plex Mono', monospace;
+        }
+        .transfer-arrow { color: #b3ad9c; font-size: 11px; padding: 0 1px; }
 
         @media (prefers-reduced-motion: reduce) {
             .sk-ribbon, .sk-node, .sk-label-name { transition: none !important; }
@@ -389,45 +443,42 @@
 
         <div class="sankey-layout-grid gap-6 items-start">
             
-            <div class="sankey-col-nodes panel p-0 flex flex-col">
+            <div class="sankey-col-nodes sankey-col-flows panel p-0 flex flex-col" style="grid-column: span 2; grid-area: unset;">
                 <div class="panel-header">
                     <div>
-                        <div class="flex items-center gap-2">
-                            <span id="nodes-panel-title" class="panel-title">Nodes</span>
-                            <span id="node-count-badge" class="bg-[#f4f2ed] text-[#7c7766] text-[10.5px] px-1.5 py-0.5 rounded-md font-semibold min-w-[18px] text-center">0</span>
-                        </div>
-                        <p id="nodes-panel-subtitle" class="panel-subtitle">Name, color, and optional value / column</p>
+                        <span class="panel-title">Data</span>
+                        <p class="panel-subtitle" id="data-panel-subtitle">Series values by column — blank means absent at that period</p>
                     </div>
-                    <button id="nodes-add-btn" onclick="addNode()" class="btn-icon" title="Add a node">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                    </button>
+                    <div class="flex items-center gap-1">
+                        <button id="add-col-btn" onclick="addSeriesColumn()" class="btn btn-ghost text-[11px]" title="Add a column">
+                            <i class="fa-solid fa-table-columns text-[10px]"></i> Col
+                        </button>
+                        <button id="add-series-btn" onclick="addSeries()" class="btn-icon" title="Add a series">
+                            <i class="fa-solid fa-plus text-xs"></i>
+                        </button>
+                    </div>
                 </div>
-                <div id="columns-editor-row" style="display:none;" class="px-3 pt-2 pb-1 border-b border-[#f0eee6]"></div>
-                <div id="nodes-list" class="p-2.5 space-y-0.5 max-h-[580px] overflow-y-auto"></div>
-            </div>
 
-            <div class="sankey-col-flows panel p-0 flex flex-col">
-                <div class="panel-header">
-                    <div>
-                        <span id="flows-panel-title" class="panel-title">Flows</span>
-                        <p id="flows-panel-subtitle" class="panel-subtitle">How much moves from one node to another</p>
-                    </div>
-                    <button id="flows-add-btn" onclick="addFlowRow()" class="btn btn-ghost" style="background:#f4f2ed;">
-                        <i class="fa-solid fa-circle-plus text-[11px]"></i><span id="flows-add-label">Add flow</span>
-                    </button>
-                </div>
-                <div class="p-2.5 flex-1 overflow-x-auto">
-                    <table class="w-full text-xs border-separate" style="border-spacing: 0 1px; table-layout: fixed;">
-                        <thead id="flows-table-head" class="text-[#9a9484] font-semibold uppercase tracking-wider">
-                            <tr>
-                                <th class="px-2 py-1.5 text-left text-[10px]">From</th>
-                                <th class="px-2 py-1.5 text-left text-[10px]">To</th>
-                                <th class="px-2 py-1.5 text-left text-[10px] w-16">Value</th>
-                                <th class="w-8"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="flows-table-body"></tbody>
+                <!-- Spreadsheet grid -->
+                <div class="overflow-x-auto">
+                    <table id="grid-table" class="w-full text-xs" style="border-collapse: collapse; min-width: 100%;">
+                        <thead id="grid-head"></thead>
+                        <tbody id="grid-body"></tbody>
                     </table>
+                </div>
+
+                <!-- Transfers section — cross-series flows only -->
+                <div class="border-t border-[#f0eee6]">
+                    <div class="panel-header" style="padding: 10px 14px 8px;">
+                        <div>
+                            <span class="panel-title" style="font-size: 12px;">Transfers</span>
+                            <p class="panel-subtitle">Cross-series flows (mergers, exits, injections). Carry-forwards are automatic.</p>
+                        </div>
+                        <button onclick="addTransfer()" class="btn btn-ghost text-[11px]" style="background:#f4f2ed;">
+                            <i class="fa-solid fa-circle-plus text-[10px]"></i> Add
+                        </button>
+                    </div>
+                    <div id="transfers-list" class="px-3 pb-3 space-y-1"></div>
                 </div>
             </div>
 
@@ -516,20 +567,45 @@
                     const colId = parseInt(colIdStr, 10);
                     const internal = `${s.name}@${colId}`;
                     nodeKey[`${s.name}:${colId}`] = internal;
-                    nodes.push({
-                        name: internal,
-                        displayName: s.name,
-                        color: s.color,
-                        value: val,
-                        column: colId
-                    });
+                    nodes.push({ name: internal, displayName: s.name, color: s.color, value: val, column: colId });
                 });
             });
-            links = (seriesFlows || []).map(f => ({
+
+            // Explicit transfers declared by the user
+            const explicitLinks = (seriesFlows || []).map(f => ({
                 source: nodeKey[`${f.from}:${f.fromCol}`],
                 target: nodeKey[`${f.to}:${f.toCol}`],
                 value: f.value
             })).filter(l => l.source && l.target);
+
+            // Auto carry-forwards: for each series, for each adjacent column pair where
+            // the series exists in both, generate a carry-forward link. Carry-forward
+            // value = series value at fromCol minus sum of any explicit outgoing transfers
+            // from this series at fromCol. If the remainder ≤ 0 the carry-forward is
+            // omitted (series effectively exits, e.g. Zurich transferring all 12 to Aviva).
+            const autoLinks = [];
+            const sortedColIds = (seriesColumns || []).map(c => c.id).sort((a, b) => a - b);
+            seriesModel.forEach(s => {
+                for (let i = 0; i < sortedColIds.length - 1; i++) {
+                    const fromColId = sortedColIds[i];
+                    const toColId   = sortedColIds[i + 1];
+                    const srcKey = `${s.name}:${fromColId}`;
+                    const tgtKey = `${s.name}:${toColId}`;
+                    if (!nodeKey[srcKey] || !nodeKey[tgtKey]) continue; // series absent at one end
+                    const fromValue = s.values[fromColId] || 0;
+                    const outgoingTransfers = (seriesFlows || [])
+                        .filter(f => f.from === s.name && f.fromCol === fromColId)
+                        .reduce((sum, f) => sum + (f.value || 0), 0);
+                    const carryForward = fromValue - outgoingTransfers;
+                    if (carryForward > 0) {
+                        autoLinks.push({ source: nodeKey[srcKey], target: nodeKey[tgtKey], value: carryForward });
+                    }
+                }
+            });
+
+            links = [...autoLinks, ...explicitLinks];
+
+            // Sync column display labels
             columnLabels = [];
             if (seriesColumns) {
                 seriesColumns.forEach(c => { columnLabels[c.id] = c.label || ''; });
@@ -755,194 +831,205 @@
         }
 
         // ---- V3 editor mode switching ----
-        function switchEditorMode(v3) {
-            document.getElementById('nodes-panel-title').textContent = v3 ? 'Series' : 'Nodes';
-            document.getElementById('nodes-panel-subtitle').textContent = v3 ? 'Node groups that persist across columns' : 'Name, color, and optional value / column';
-            document.getElementById('flows-panel-title').textContent = v3 ? 'Flows' : 'Flows';
-            document.getElementById('flows-panel-subtitle').textContent = v3 ? 'Connections between series at specific columns' : 'How much moves from one node to another';
-            const addBtn = document.getElementById('nodes-add-btn');
-            if (v3) { addBtn.setAttribute('onclick', 'addSeries()'); addBtn.title = 'Add a series'; }
-            else    { addBtn.setAttribute('onclick', 'addNode()');   addBtn.title = 'Add a node'; }
-            const flowsBtn = document.getElementById('flows-add-btn');
-            if (v3) { flowsBtn.setAttribute('onclick', 'addSeriesFlow()'); }
-            else    { flowsBtn.setAttribute('onclick', 'addFlowRow()'); }
-            document.getElementById('flows-add-label').textContent = v3 ? 'Add flow' : 'Add flow';
-            document.getElementById('columns-editor-row').style.display = v3 ? 'block' : 'none';
-        }
+        // ---- Grid + Transfers render ----
 
-        function renderColumnsEditor() {
-            const row = document.getElementById('columns-editor-row');
-            if (!row || !seriesColumns) return;
-            let html = `<div class="flex flex-wrap items-center gap-2 pb-1">
-                <span class="text-[10px] font-bold text-[#b3ad9c] uppercase tracking-wider">Columns</span>`;
-            seriesColumns.forEach((col, i) => {
-                html += `<div class="flex items-center gap-1">
-                    <input type="text" value="${escapeAttr(col.label || '')}" placeholder="Label"
-                           class="col-label-input" style="width:64px;"
-                           onchange="updateSeriesColumn(${i}, 'label', this.value)">
-                    <button onclick="removeSeriesColumn(${i})" class="btn-icon" style="width:18px;height:18px;font-size:9px;" title="Remove column">
+        function renderGrid() {
+            const head = document.getElementById('grid-head');
+            const body = document.getElementById('grid-body');
+            if (!head || !body) return;
+
+            const cols = seriesColumns || [];
+            const series = seriesModel || [];
+
+            // Header row: empty series-name cell + one cell per column (editable label) + delete spacer
+            let headHtml = '<tr>';
+            headHtml += '<th style="text-align:left; padding-left:10px; min-width:150px;"></th>';
+            cols.forEach((col, ci) => {
+                headHtml += `<th>
+                    <div style="display:flex; align-items:center; gap:3px; justify-content:center;">
+                        <input type="text" class="grid-col-label-input" value="${escapeAttr(col.label || '')}"
+                               placeholder="Label" maxlength="20"
+                               onchange="updateSeriesColumn(${ci}, 'label', this.value)"
+                               title="Column label">
+                        <button onclick="removeSeriesColumn(${ci})" class="grid-delete-btn" title="Remove column"
+                                style="opacity:0.4;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.4">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </th>`;
+            });
+            headHtml += '<th style="width:24px;"></th></tr>';
+            head.innerHTML = headHtml;
+
+            // Body rows: one per series
+            body.innerHTML = '';
+            if (series.length === 0) {
+                body.innerHTML = `<tr><td colspan="${cols.length + 2}" style="padding:24px; text-align:center; color:#b3ad9c; font-size:12px;">
+                    No series yet — click + to add one
+                </td></tr>`;
+                return;
+            }
+            series.forEach((s, si) => {
+                const tr = document.createElement('tr');
+                let rowHtml = `<td>
+                    <div class="grid-series-cell">
+                        <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(s.color)}; flex-shrink:0;"
+                                onclick="openSeriesColorPickerGrid(this, ${si})" title="Change color"></button>
+                        <input type="text" value="${escapeAttr(s.name)}" class="grid-series-name"
+                               onchange="updateSeriesName(${si}, this.value)"
+                               onblur="updateSeriesName(${si}, this.value)">
+                    </div>
+                </td>`;
+                cols.forEach(col => {
+                    const val = s.values[col.id] !== undefined ? s.values[col.id] : '';
+                    rowHtml += `<td class="grid-value-cell">
+                        <input type="number" class="grid-value-input" value="${val}" placeholder="—"
+                               min="0" step="any"
+                               onchange="updateSeriesValue(${si}, ${col.id}, this.value)"
+                               onblur="updateSeriesValue(${si}, ${col.id}, this.value)">
+                    </td>`;
+                });
+                rowHtml += `<td style="padding:0 4px; width:24px;">
+                    <button onclick="deleteSeries(${si})" class="grid-delete-btn" title="Delete series">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
-                </div>`;
-            });
-            html += `<button onclick="addSeriesColumn()" class="btn-icon" title="Add column">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                    </button>
-                </div>`;
-            row.innerHTML = html;
-        }
-
-        function renderSeriesEditor() {
-            switchEditorMode(true);
-            renderColumnsEditor();
-            const container = document.getElementById('nodes-list');
-            const badge = document.getElementById('node-count-badge');
-            container.innerHTML = '';
-            if (!seriesModel || seriesModel.length === 0) {
-                badge.innerText = '0';
-                container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-bezier-curve text-lg mb-2 text-[#d8d4c9]"></i><p class="text-xs">No series yet — add one to get started</p></div>`;
-                return;
-            }
-            badge.innerText = seriesModel.length;
-            seriesModel.forEach((s, si) => {
-                const hasOverrides = false;
-                const div = document.createElement('div');
-                div.className = 'node-editor-block';
-                // Build per-column value inputs
-                let valueInputs = '';
-                (seriesColumns || []).forEach(col => {
-                    const val = s.values[col.id] !== undefined ? s.values[col.id] : '';
-                    valueInputs += `<div class="override-field">
-                        <label class="override-label">${escapeAttr(col.label || `Col ${col.id}`)}</label>
-                        <input type="number" min="0" step="any" value="${val}" placeholder="—"
-                               class="field-select override-input"
-                               onchange="updateSeriesValue(${si}, ${col.id}, this.value)">
-                    </div>`;
-                });
-                div.innerHTML = `
-                    <div class="editor-row">
-                        <button type="button" class="swatch-trigger" style="background:${resolveThemeColor(s.color)};"
-                                onclick="openSeriesColorPicker(this, ${si})" title="Change color"></button>
-                        <input type="text" value="${escapeAttr(s.name)}" class="field-input flex-1 min-w-0"
-                               onchange="updateSeriesName(${si}, this.value)">
-                        <button onclick="deleteSeries(${si})" class="btn-icon row-delete" title="Delete series">
-                            <i class="fa-solid fa-xmark text-xs"></i>
-                        </button>
-                    </div>
-                    <div class="node-overrides" style="display:flex;">
-                        ${valueInputs}
-                    </div>
-                `;
-                container.appendChild(div);
+                </td>`;
+                tr.innerHTML = rowHtml;
+                body.appendChild(tr);
             });
         }
 
-        function renderSeriesFlowsTable() {
-            const tbody = document.getElementById('flows-table-body');
-            tbody.innerHTML = '';
-            if (!seriesFlows || seriesFlows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">No flows yet — add one to connect series</div></td></tr>`;
-                return;
-            }
+        function renderTransfers() {
+            const list = document.getElementById('transfers-list');
+            if (!list) return;
+            const transfers = seriesFlows || [];
             const seriesNames = (seriesModel || []).map(s => s.name);
-            const colIds = (seriesColumns || []).map(c => c.id);
-            seriesFlows.forEach((f, fi) => {
-                const row = document.createElement('tr');
-                row.className = 'interactive-row';
-                const makeSeriesSelect = (field, val) =>
-                    `<select class="field-select" onchange="updateSeriesFlow(${fi}, '${field}', this.value)">
-                        ${seriesNames.map(n => `<option value="${escapeAttr(n)}"${n === val ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('')}
-                    </select>`;
-                const makeColSelect = (field, val) =>
-                    `<select class="field-select" onchange="updateSeriesFlow(${fi}, '${field}', parseInt(this.value))">
-                        ${colIds.map(id => { const lbl = (seriesColumns.find(c=>c.id===id)||{}).label || `Col ${id}`; return `<option value="${id}"${id === val ? ' selected' : ''}>${escapeAttr(lbl)}</option>`; }).join('')}
-                    </select>`;
-                row.innerHTML = `
-                    <td class="px-1 py-0.5">${makeSeriesSelect('from', f.from)}</td>
-                    <td class="px-1 py-0.5">${makeColSelect('fromCol', f.fromCol)}</td>
-                    <td class="px-1 py-0.5 text-[#9a9484] text-xs text-center">→</td>
-                    <td class="px-1 py-0.5">${makeSeriesSelect('to', f.to)}</td>
-                    <td class="px-1 py-0.5">${makeColSelect('toCol', f.toCol)}</td>
-                    <td class="px-1 py-0.5">
-                        <input type="number" value="${f.value}" step="any" min="0" class="field-select font-semibold"
-                               onchange="updateSeriesFlow(${fi}, 'value', parseFloat(this.value) || 0)">
-                    </td>
-                    <td class="text-center">
-                        <button onclick="deleteSeriesFlow(${fi})" class="btn-icon" title="Delete flow">
-                            <i class="fa-solid fa-xmark text-xs"></i>
-                        </button>
-                    </td>
+            const cols = seriesColumns || [];
+
+            if (transfers.length === 0) {
+                list.innerHTML = `<p style="font-size:11px; color:#b3ad9c; padding:4px 2px;">
+                    None — carry-forwards between columns are automatic.
+                </p>`;
+                return;
+            }
+
+            list.innerHTML = '';
+            transfers.forEach((t, ti) => {
+                const div = document.createElement('div');
+                div.className = 'transfer-row';
+
+                const makeSeriesSelect = (field, val) => {
+                    const opts = seriesNames.map(n =>
+                        `<option value="${escapeAttr(n)}"${n === val ? ' selected' : ''}>${escapeAttr(n)}</option>`
+                    ).join('');
+                    return `<select class="transfer-select" onchange="updateTransfer(${ti}, '${field}', this.value)">${opts}</select>`;
+                };
+                const makeColSelect = (field, val) => {
+                    const opts = cols.map(c => {
+                        const lbl = c.label || `Col ${c.id}`;
+                        return `<option value="${c.id}"${c.id === val ? ' selected' : ''}>${escapeAttr(lbl)}</option>`;
+                    }).join('');
+                    return `<select class="transfer-col-select" onchange="updateTransfer(${ti}, '${field}', parseInt(this.value))">${opts}</select>`;
+                };
+
+                div.innerHTML = `
+                    ${makeSeriesSelect('from', t.from)}
+                    ${makeColSelect('fromCol', t.fromCol)}
+                    <span class="transfer-arrow">→</span>
+                    ${makeSeriesSelect('to', t.to)}
+                    ${makeColSelect('toCol', t.toCol)}
+                    <input type="number" class="transfer-value-input" value="${t.value}" min="0" step="any"
+                           onchange="updateTransfer(${ti}, 'value', parseFloat(this.value) || 0)">
+                    <button onclick="deleteTransfer(${ti})" class="btn-icon row-delete" style="opacity:0.5;" title="Delete transfer">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
                 `;
-                tbody.appendChild(row);
+                list.appendChild(div);
             });
         }
 
-        // ---- V3 series CRUD ----
+        // Master render for the whole data panel (v3 mode)
+        function renderDataPanel() {
+            renderGrid();
+            renderTransfers();
+        }
+
+        // ---- V3 CRUD ----
         function addSeriesColumn() {
+            if (!seriesColumns) return;
             const nextId = seriesColumns.length ? Math.max(...seriesColumns.map(c => c.id)) + 1 : 0;
             seriesColumns.push({ id: nextId, label: '' });
-            renderColumnsEditor(); saveToLocalStorage(); generateDiagram();
+            renderDataPanel(); saveToLocalStorage(); generateDiagram();
         }
-        function removeSeriesColumn(i) {
-            const colId = seriesColumns[i].id;
-            seriesColumns.splice(i, 1);
-            seriesModel.forEach(s => delete s.values[colId]);
-            seriesFlows = seriesFlows.filter(f => f.fromCol !== colId && f.toCol !== colId);
-            renderSeriesEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        function removeSeriesColumn(ci) {
+            const colId = seriesColumns[ci].id;
+            seriesColumns.splice(ci, 1);
+            (seriesModel || []).forEach(s => delete s.values[colId]);
+            seriesFlows = (seriesFlows || []).filter(f => f.fromCol !== colId && f.toCol !== colId);
+            renderDataPanel(); saveToLocalStorage(); generateDiagram();
         }
-        function updateSeriesColumn(i, field, val) {
-            seriesColumns[i][field] = val;
-            renderColumnsEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        function updateSeriesColumn(ci, field, val) {
+            seriesColumns[ci][field] = val;
+            renderTransfers();
+            renderColumnLabelInputs(seriesColumns.length);
+            saveToLocalStorage(); generateDiagram();
         }
         function addSeries() {
+            if (!seriesModel) return;
             const themeOrder = [2, 3, 4, 5, 6, 7, 0, 1];
-            const ti = themeOrder[(seriesModel.length) % themeOrder.length];
+            const ti = themeOrder[seriesModel.length % themeOrder.length];
             seriesModel.push({ name: `Series ${seriesModel.length + 1}`, color: { themeIndex: ti, variant: 'base' }, values: {} });
-            renderSeriesEditor(); saveToLocalStorage(); generateDiagram();
-            const inputs = document.querySelectorAll('#nodes-list .field-input');
-            const last = inputs[inputs.length - 1];
-            if (last) { last.focus(); last.select(); }
+            renderGrid(); saveToLocalStorage(); generateDiagram();
+            // Focus the new name input
+            const rows = document.querySelectorAll('#grid-body tr');
+            const lastRow = rows[rows.length - 1];
+            if (lastRow) { const inp = lastRow.querySelector('.grid-series-name'); if (inp) { inp.focus(); inp.select(); } }
         }
         function updateSeriesName(si, newName) {
-            if (!newName.trim()) return;
+            const trimmed = newName.trim();
+            if (!trimmed || trimmed === seriesModel[si].name) return;
             const old = seriesModel[si].name;
-            seriesModel[si].name = newName.trim();
-            seriesFlows.forEach(f => { if (f.from === old) f.from = newName.trim(); if (f.to === old) f.to = newName.trim(); });
-            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+            seriesModel[si].name = trimmed;
+            (seriesFlows || []).forEach(f => {
+                if (f.from === old) f.from = trimmed;
+                if (f.to === old) f.to = trimmed;
+            });
+            renderTransfers(); saveToLocalStorage(); generateDiagram();
         }
         function updateSeriesValue(si, colId, rawVal) {
-            const v = parseFloat(rawVal);
-            if (rawVal.trim() === '' || isNaN(v)) delete seriesModel[si].values[colId];
+            const trimmed = String(rawVal).trim();
+            const v = parseFloat(trimmed);
+            if (trimmed === '' || isNaN(v) || v < 0) delete seriesModel[si].values[colId];
             else seriesModel[si].values[colId] = v;
             saveToLocalStorage(); generateDiagram();
         }
         function deleteSeries(si) {
             const name = seriesModel[si].name;
             seriesModel.splice(si, 1);
-            seriesFlows = seriesFlows.filter(f => f.from !== name && f.to !== name);
-            renderSeriesEditor(); renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+            seriesFlows = (seriesFlows || []).filter(f => f.from !== name && f.to !== name);
+            renderDataPanel(); saveToLocalStorage(); generateDiagram();
         }
-        function openSeriesColorPicker(triggerEl, si) {
+        function openSeriesColorPickerGrid(triggerEl, si) {
             openColorPicker(triggerEl, seriesModel[si].color, ref => {
                 seriesModel[si].color = ref;
                 triggerEl.style.background = resolveThemeColor(ref);
                 saveToLocalStorage(); generateDiagram();
             });
         }
-        function addSeriesFlow() {
-            if (!seriesModel || seriesModel.length < 1) { alert('Add at least one series first.'); return; }
-            if (!seriesColumns || seriesColumns.length < 2) { alert('Add at least two columns first.'); return; }
-            const colIds = seriesColumns.map(c => c.id).sort((a,b) => a-b);
+        function addTransfer() {
+            if (!seriesModel || seriesModel.length < 1) return;
+            if (!seriesColumns || seriesColumns.length < 2) return;
+            const colIds = seriesColumns.map(c => c.id).sort((a, b) => a - b);
             seriesFlows.push({ from: seriesModel[0].name, fromCol: colIds[0], to: seriesModel[0].name, toCol: colIds[1], value: 0 });
-            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+            renderTransfers(); saveToLocalStorage(); generateDiagram();
         }
-        function updateSeriesFlow(fi, field, val) {
-            seriesFlows[fi][field] = val;
+        function updateTransfer(ti, field, val) {
+            seriesFlows[ti][field] = val;
             saveToLocalStorage(); generateDiagram();
         }
-        function deleteSeriesFlow(fi) {
-            seriesFlows.splice(fi, 1);
-            renderSeriesFlowsTable(); saveToLocalStorage(); generateDiagram();
+        function deleteTransfer(ti) {
+            seriesFlows.splice(ti, 1);
+            renderTransfers(); saveToLocalStorage(); generateDiagram();
         }
 
         function renderNodes() {
@@ -2112,8 +2199,7 @@
                         seriesFlows   = data.flows;
                         nodes = []; links = []; columnLabels = [];
                         paletteMode = 'branded';
-                        renderSeriesEditor();
-                        saveToLocalStorage(); generateDiagram();
+                        renderDataPanel(); saveToLocalStorage(); generateDiagram();
                     } else if (data.version === 2) {
                         if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
                         const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
@@ -2253,11 +2339,6 @@
         }
 
         function loadDefaultExample() {
-            // UK DC master trust market consolidation: 2015 → 2019 → 2024
-            // V3 series model: providers are named once, values declared per column.
-            // Asset Growth and Net New Flows are explicit interim series that make up the
-            // difference between carry-forward amounts and declared end-of-period AUM.
-            // Illustrative figures — designed to test the series model architecture.
             seriesColumns = [
                 { id: 0, label: '2015' },
                 { id: 1, label: '2019' },
@@ -2274,33 +2355,22 @@
                 { name: 'Asset Growth',   color: { themeIndex: 6, variant: 'tint1' },  values: { 0: 30, 1: 37 } },
                 { name: 'Net New Flows',  color: { themeIndex: 3, variant: 'tint2' },  values: { 0: 10, 1: 15 } },
             ];
+            // Only genuine cross-series transfers — carry-forwards are now automatic.
+            // Zurich and Standard Life transfer out fully, so they exit (no carry-forward).
             seriesFlows = [
-                // Carry-forwards (existing assets moving through each period)
-                { from: 'Aviva',          fromCol: 0, to: 'Aviva',          toCol: 1, value: 50 },
-                { from: 'Legal & General',fromCol: 0, to: 'Legal & General',toCol: 1, value: 40 },
-                { from: 'Standard Life',  fromCol: 0, to: 'Abrdn',          toCol: 1, value: 35 }, // SL→Abrdn merger
-                { from: 'Zurich',         fromCol: 0, to: 'Aviva',          toCol: 1, value: 12 }, // Zurich exit→Aviva
-                { from: 'Nest',           fromCol: 0, to: 'Nest',           toCol: 1, value: 8  },
-                { from: 'Aviva',          fromCol: 1, to: 'Aviva',          toCol: 2, value: 70 },
-                { from: 'Legal & General',fromCol: 1, to: 'Legal & General',toCol: 2, value: 47 },
-                { from: 'Abrdn',          fromCol: 1, to: 'Abrdn',          toCol: 2, value: 70 },
-                { from: 'Nest',           fromCol: 1, to: 'Nest',           toCol: 2, value: 25 },
-                { from: 'Smart Pension',  fromCol: 1, to: 'Smart Pension',  toCol: 2, value: 2  },
-                // Asset growth 2015→2019 (market returns allocating to each provider)
+                { from: 'Zurich',         fromCol: 0, to: 'Aviva',          toCol: 1, value: 12 },
+                { from: 'Standard Life',  fromCol: 0, to: 'Abrdn',          toCol: 1, value: 35 },
                 { from: 'Asset Growth',   fromCol: 0, to: 'Aviva',          toCol: 1, value: 8  },
                 { from: 'Asset Growth',   fromCol: 0, to: 'Legal & General',toCol: 1, value: 7  },
-                { from: 'Asset Growth',   fromCol: 0, to: 'Abrdn',          toCol: 1, value: 8  }, // incl. Aberdeen assets
+                { from: 'Asset Growth',   fromCol: 0, to: 'Abrdn',          toCol: 1, value: 8  },
                 { from: 'Asset Growth',   fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
-                // Net new flows 2015→2019 (new member contributions)
                 { from: 'Net New Flows',  fromCol: 0, to: 'Nest',           toCol: 1, value: 7  },
                 { from: 'Net New Flows',  fromCol: 0, to: 'Smart Pension',  toCol: 1, value: 2  },
                 { from: 'Net New Flows',  fromCol: 0, to: 'Legal & General',toCol: 1, value: 1  },
-                // Asset growth 2019→2024
                 { from: 'Asset Growth',   fromCol: 1, to: 'Aviva',          toCol: 2, value: 10 },
                 { from: 'Asset Growth',   fromCol: 1, to: 'Legal & General',toCol: 2, value: 8  },
                 { from: 'Asset Growth',   fromCol: 1, to: 'Abrdn',          toCol: 2, value: 9  },
                 { from: 'Asset Growth',   fromCol: 1, to: 'Nest',           toCol: 2, value: 10 },
-                // Net new flows 2019→2024
                 { from: 'Net New Flows',  fromCol: 1, to: 'Nest',           toCol: 2, value: 5  },
                 { from: 'Net New Flows',  fromCol: 1, to: 'Smart Pension',  toCol: 2, value: 4  },
                 { from: 'Net New Flows',  fromCol: 1, to: 'Legal & General',toCol: 2, value: 5  },
@@ -2309,9 +2379,7 @@
             ];
             nodes = []; links = []; columnLabels = [];
             paletteMode = 'branded';
-
-            renderSeriesEditor();
-            renderFlowsTable();
+            renderDataPanel();
             generateDiagram();
         }
 
@@ -2391,8 +2459,7 @@
                 document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');
                 document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             } else if (isV3Mode()) {
-                renderSeriesEditor();
-                renderFlowsTable();
+                renderDataPanel();
                 generateDiagram();
             } else {
                 renderNodes();

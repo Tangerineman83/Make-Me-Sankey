@@ -2009,12 +2009,44 @@
             const globalTotal = Math.max(...colNodeNames.map(names =>
                 names.reduce((s, name) => s + nodeValue(name), 0)
             ));
+            // Expanded-graph sort order: for each node, its position (index) in its
+            // column when ALL nodes are present and sorted by value desc. Used below so
+            // residual @1 nodes (e.g. NOW@1, NatWest Cushon@1) keep their correct vertical
+            // slot within the full @1 column rather than being re-sorted amongst themselves.
+            const expandedSortOrder = (() => {
+                const order = {};
+                // Recompute column membership for the *original* (pre-collapse) graph
+                const origRankMap = assignColumns(
+                    nodes.map(n => n.name), links, nodes
+                );
+                const origMaxRank = Math.max(...Object.values(origRankMap));
+                const origColBuckets = Array.from({ length: origMaxRank + 1 }, () => []);
+                nodes.forEach(n => {
+                    const r = origRankMap[n.name];
+                    if (r !== undefined) origColBuckets[r].push({ name: n.name, value: nodeValue(n.name) });
+                });
+                origColBuckets.forEach(col => {
+                    col.sort((a, b) => b.value - a.value)
+                       .forEach((n, i) => { order[n.name] = i; });
+                });
+                return order;
+            })();
+
             const laidOut = colNodeNames.map(names => {
                 const colNodes = names.map(name => ({
                     name,
                     color: (renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].color) || '#94a3b8',
                     value: nodeValue(name)
-                })).sort((a, b) => b.value - a.value);
+                })).sort((a, b) => {
+                    // Primary: use the expanded-graph sort index so residual nodes keep
+                    // their original vertical position relative to the full column.
+                    const oa = expandedSortOrder[a.name], ob = expandedSortOrder[b.name];
+                    if (oa !== undefined && ob !== undefined) return oa - ob;
+                    if (oa !== undefined) return -1;
+                    if (ob !== undefined) return  1;
+                    // Fallback for nodes with no expanded-graph order (shouldn't occur)
+                    return b.value - a.value;
+                });
                 return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length), globalTotal);
             });
             const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));

@@ -1951,8 +1951,17 @@
                 : 160;
             const minPlotWidth = Math.max(160, minPlotWidthForLabels);
 
-            // W: start from container width, but grow if labels need more space.
-            const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth);
+            // W must be large enough that H (derived from aspect ratio) gives each
+            // edge-column node at least enough vertical space to sit alongside its label.
+            // minNodeSlot = label block height: 2 text lines + gap = ~3 * lineHeight.
+            const minLineH = baseLabelSize * 1.05; // lineHeight at base font size
+            const minNodeSlot = minLineH * 3; // name + value + gap
+            const maxEdgeNodes = Math.max(colNodeNames[0].length, colNodeNames[numCols-1].length);
+            const minHForLabels = maxEdgeNodes * minNodeSlot + 60; // 60 = conservative topPad+bottomPad
+            const aspectRatio = diagramAspect === '4:3' ? 3/4 : diagramAspect === 'portrait' ? 4/3 : 9/16;
+            const minWForH = Math.ceil(minHForLabels / aspectRatio);
+            // W: largest of container width, label-space requirement, and H-driven floor.
+            const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth, minWForH);
 
             // Now compute wrappedLabel for each column using its actual available width.
             // Edge columns: availableForText = their margin minus leader/pad.
@@ -2208,32 +2217,27 @@
             });
 
             // ---- Labels ----
-            // Every column gets the same floating label treatment — name + value floated
-            // to the outside of the node bar. For edge columns this is the margin space;
-            // for middle columns labels float outward into the inter-column gap, alternating
-            // left/right so adjacent columns don't collide.
-            // W was grown above to guarantee there's always enough room, so no suppression.
+            // Edge columns: always show name + value, floating away from the plot into the margin.
+            // Middle columns: float into inter-column gap, skip nodes too thin to be visible.
             const lineHeight = labelFontSize * 1.05;
 
             laidOut.forEach((col, c) => {
-                // Label side: leftmost column → labels on left; rightmost → right;
-                // middle columns alternate: left-of-centre float right, right-of-centre float left.
-                // For a 4-col diagram (0,1,2,3): col 1 floats right, col 2 floats left.
-                const midCol = (numCols - 1) / 2;
-                const floatRight = c <= midCol; // true = label to the right of the bar
                 const isLeft  = c === 0;
                 const isRight = c === numCols - 1;
-
-                // Edge columns float away from centre; middle columns float toward gap.
-                const labelOnRight = isLeft ? false : isRight ? true : floatRight;
+                const isEdge  = isLeft || isRight;
+                // Left col: labels float left. Right col: labels float right.
+                // Middle cols: left-of-centre float right, right-of-centre float left.
+                const midCol = (numCols - 1) / 2;
+                const labelOnRight = isLeft ? false : isRight ? true : c <= midCol;
 
                 col.forEach(n => {
                     const midY = (n.y0 + n.y1) / 2;
                     const nodeHeight = n.y1 - n.y0;
-                    if (nodeHeight < 4) return; // invisible node
+                    // Middle columns skip invisible nodes; edge columns always label.
+                    if (!isEdge && nodeHeight < 4) return;
 
                     const lines = wrappedLabel[n.name] || [];
-                    if (!lines.length) return; // suppressed label (empty string override)
+                    if (!lines.length) return; // empty-string label override = suppress
 
                     const x = colX[c];
                     const edgeX = labelOnRight ? x + nodeThickness / 2 : x - nodeThickness / 2;
@@ -2242,7 +2246,9 @@
                     const textX = labelOnRight ? leaderEndX + 6 : leaderEndX - 6;
                     const anchor = labelOnRight ? 'start' : 'end';
 
-                    const blockLines = lines.length + (showValues ? 1 : 0);
+                    // Edge columns always show values; middle columns respect showValues toggle.
+                    const showVal = isEdge ? true : showValues;
+                    const blockLines = lines.length + (showVal ? 1 : 0);
                     const blockH = blockLines * lineHeight;
                     let lineY = midY - blockH / 2 + lineHeight * 0.78;
 
@@ -2252,7 +2258,7 @@
                         svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
                         lineY += lineHeight;
                     });
-                    if (showValues) {
+                    if (showVal) {
                         svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
                     }
                     svg += `</g>`;

@@ -1041,7 +1041,41 @@
                 changed = true; // run another pass to catch chains
             }
 
+            // Pin each surviving node to its column rank from the *original* expanded graph.
+            // Without this, collapsed successors (e.g. Aviva@2) get pulled left by
+            // assignColumns because their only predecessor is now Bundled Providers (rank 0),
+            // placing them at rank 1 instead of rank 2 where they sat in expanded mode.
+            // Stamping the original rank as node.column forces assignColumns to keep them right.
+            const origRank = assignColumnsRaw(origNodes.map(n => n.name), origLinks);
+            nodes = nodes.map(n => {
+                const r = origRank[n.name];
+                if (r === undefined) return n;
+                // Only override if not already manually pinned by the user
+                if (typeof n.column === 'number') return n;
+                return { ...n, column: r };
+            });
+
             return { nodes, links };
+        }
+
+        // Thin wrapper used by computePassThroughGraph before generateDiagram's local
+        // assignColumns closure exists — same algorithm, operates on raw name/link arrays.
+        function assignColumnsRaw(nodeNames, links) {
+            const rank = {};
+            nodeNames.forEach(n => { rank[n] = 0; });
+            const incoming = {};
+            nodeNames.forEach(n => { incoming[n] = []; });
+            links.forEach(l => { if (incoming[l.target]) incoming[l.target].push(l.source); });
+            let changed = true;
+            while (changed) {
+                changed = false;
+                for (const n of nodeNames) {
+                    if (!incoming[n].length) continue;
+                    const maxP = Math.max(...incoming[n].map(p => rank[p] !== undefined ? rank[p] : 0));
+                    if (maxP + 1 > rank[n]) { rank[n] = maxP + 1; changed = true; }
+                }
+            }
+            return rank;
         }
 
         // ---- V3 editor mode switching ----

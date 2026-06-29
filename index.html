@@ -589,7 +589,7 @@
                         </div>
                         <div class="pill-toggle-group">
                             <button id="show-values-btn" onclick="toggleShowValues()" class="pill-toggle-btn is-active" title="Show or hide numeric values on nodes">Values</button>
-                            <button id="pass-through-btn" onclick="togglePassThrough()" class="pill-toggle-btn is-active" title="Collapse identical pass-through nodes">Pass-through</button>
+                            <button id="pass-through-btn" onclick="togglePassThrough()" class="pill-toggle-btn" title="Expand to show intermediate pass-through nodes">Expand</button>
                         </div>
                     </div>
                     <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
@@ -615,7 +615,7 @@
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
         let showValues = true;      // when false, value chips/labels are hidden and only node names show
-        let showPassThrough = true; // when false, exact pass-through nodes (equal inflow=outflow, same displayName chain) are collapsed
+        let showPassThrough = false;  // false = collapsed (simpler view); true = show all intermediate nodes
         let activeGradientsCache = [];
 
         // ---- V3 series model ----
@@ -929,7 +929,12 @@
         function togglePassThrough() {
             showPassThrough = !showPassThrough;
             const btn = document.getElementById('pass-through-btn');
-            if (btn) btn.classList.toggle('is-active', showPassThrough);
+            if (btn) {
+                // Label describes what clicking again will do:
+                // currently expanded → button says "Collapse"; currently collapsed → "Expand"
+                btn.classList.toggle('is-active', showPassThrough);
+                btn.textContent = showPassThrough ? 'Collapse' : 'Expand';
+            }
             generateDiagram();
             saveToLocalStorage();
         }
@@ -1947,10 +1952,18 @@
                 const ty1 = ty0 + (tNode.y1 - tNode.y0) * (l.value / tNode.value);
                 targetCursors.set(l.target, ty1);
 
+                // Gradient only on cross-entity flows between intermediate nodes.
+                // Flows to/from edge columns (Bundled Providers, Master Trust, Contract+Other)
+                // stay flat. Only mid-column cross-entity flows (e.g. NOW→Mercer) get gradients.
+                const isCrossEntityMid = paletteMode === 'branded'
+                    && sRank > 0 && tRank < numCols - 1   // both non-edge
+                    && displayNameFor(l.source) !== displayNameFor(l.target);
                 return {
                     source: l.source, target: l.target, value: l.value,
                     sRank, tRank, sy0, sy1, ty0, ty1,
-                    fillColor: resolveRibbonColor(l.target, tNode.color)
+                    fillColor: resolveRibbonColor(l.target, tNode.color),
+                    sourceColor: isCrossEntityMid ? (sNode.color ? resolveThemeColor(sNode.color) : null) : null,
+                    targetColorRaw: isCrossEntityMid ? (tNode.color ? resolveThemeColor(tNode.color) : null) : null,
                 };
             }).filter(Boolean);
 
@@ -2014,14 +2027,28 @@
             }
             if (ribbonDefs) svg += `<defs>${ribbonDefs}</defs>`;
 
+            // Build gradient defs for cross-colour ribbons (branded mode, different source/target colours)
+            const gradientDefs = [];
+            ribbons.forEach((r, ri) => {
+                if (!r.sourceColor || !r.targetColorRaw) return;
+                if (r.sourceColor === r.targetColorRaw) return; // same colour — no gradient needed
+                // Use a simple hex compare; close-but-different colours still get a gradient
+                gradientDefs.push(`<linearGradient id="sk-ribbon-grad-${ri}" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+                    <stop offset="0%" stop-color="${r.sourceColor}"/>
+                    <stop offset="100%" stop-color="${r.targetColorRaw}"/>
+                </linearGradient>`);
+                r.gradientId = `sk-ribbon-grad-${ri}`;
+            });
+            if (gradientDefs.length) svg += `<defs>${gradientDefs.join('')}</defs>`;
+
             ribbons.forEach(r => {
                 const x0 = colX[r.sRank], x1 = colX[r.tRank];
                 const d = ribbonPath(x0, x1, r);
                 const filterAttr = ribbonStyle === 'classic' ? ' filter="url(#sk-brush-filter)"' : (ribbonStyle === 'modern' ? ' filter="url(#sk-glass-shadow)"' : '');
-                // Find the index in links[] for row-hover highlighting
                 const linkIdx = links.findIndex(l => l.source === r.source && l.target === r.target);
                 const linkIdxAttr = linkIdx >= 0 ? ` data-link-index="${linkIdx}"` : '';
-                svg += `<path d="${d}" fill="${r.fillColor}" fill-opacity="${globalOpacityValue}"${filterAttr}${linkIdxAttr} class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
+                const fill = r.gradientId ? `url(#${r.gradientId})` : r.fillColor;
+                svg += `<path d="${d}" fill="${fill}" fill-opacity="${globalOpacityValue}"${filterAttr}${linkIdxAttr} class="sk-ribbon" data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}"><title>${escapeAttr(r.source)} → ${escapeAttr(r.target)}: ${formatFlowValue(r.value)}</title></path>`;
                 if (ribbonStyle === 'modern') {
                     svg += `<path d="${d}" fill="url(#sk-glass-sheen)" class="sk-ribbon sk-ribbon-sheen"${linkIdxAttr} data-source="${escapeAttr(r.source)}" data-target="${escapeAttr(r.target)}" style="pointer-events:none;"/>`;
                 }
@@ -2548,6 +2575,7 @@
             document.getElementById('show-values-btn').classList.toggle('is-active', showValues);
             document.getElementById('show-values-btn').textContent = showValues ? 'Values' : 'Names';
             document.getElementById('pass-through-btn').classList.toggle('is-active', showPassThrough);
+            document.getElementById('pass-through-btn').textContent = showPassThrough ? 'Collapse' : 'Expand';
             syncSystemThemeSelect();
             
             if (links.length === 0 && !isV3Mode()) {

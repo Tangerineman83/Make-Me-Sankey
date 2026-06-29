@@ -964,7 +964,7 @@
         // the pass-through node's targets.
         function computePassThroughGraph(origNodes, origLinks) {
             // Expanded mode: return data unchanged
-            if (showPassThrough) return { nodes: origNodes, links: origLinks };
+            if (showPassThrough) return { nodes: origNodes, links: origLinks, fullNodes: origNodes, fullLinks: origLinks };
 
             // Collapsed mode: remove pure pass-through nodes — nodes where every unit
             // that flows in also flows straight back out to a SINGLE successor that shares
@@ -1072,7 +1072,7 @@
                 return { ...n, column: r };
             });
 
-            return { nodes, links };
+            return { nodes, links, fullNodes: origNodes, fullLinks: origLinks };
         }
 
         // Thin wrapper used by computePassThroughGraph before generateDiagram's local
@@ -1823,7 +1823,7 @@
             }
 
             // Apply pass-through collapsing if the toggle is off
-            const { nodes: renderNodes, links: renderLinks } = computePassThroughGraph(nodes, links);
+            const { nodes: renderNodes, links: renderLinks, fullNodes, fullLinks } = computePassThroughGraph(nodes, links);
 
             const nodeIndex = {};
             renderNodes.forEach((n, i) => nodeIndex[n.name] = i);
@@ -2039,15 +2039,29 @@
             // being re-packed amongst themselves. Ghost nodes (collapsed away) act as
             // invisible spacers that still consume their share of vertical space.
             const expandedColLayout = (() => {
-                const origRankMap = assignColumns(nodes.map(n => n.name), links, nodes);
+                const origRankMap = assignColumns(fullNodes.map(n => n.name), fullLinks, fullNodes);
                 const origMaxRank = Math.max(...Object.values(origRankMap));
                 const origColBuckets = Array.from({ length: origMaxRank + 1 }, () => []);
-                nodes.forEach(n => {
+                // Build a value map from the full (pre-collapse) links so ghost @1 nodes
+                // get their correct sizes even though they're absent from validLinks.
+                const fullValueMap = {};
+                fullLinks.forEach(l => {
+                    fullValueMap[l.target] = (fullValueMap[l.target] || 0) + l.value;
+                });
+                fullNodes.forEach(n => {
+                    if (!fullValueMap[n.name]) {
+                        // Source node: use outflow
+                        fullValueMap[n.name] = fullLinks.filter(l => l.source === n.name).reduce((s,l) => s+l.value, 0);
+                    }
+                });
+                const fullNodeIndex = {};
+                fullNodes.forEach((n,i) => fullNodeIndex[n.name] = i);
+                fullNodes.forEach(n => {
                     const r = origRankMap[n.name];
                     if (r !== undefined) origColBuckets[r].push({
                         name: n.name,
-                        color: (nodeIndex[n.name] !== undefined && renderNodes[nodeIndex[n.name]] && renderNodes[nodeIndex[n.name]].color) || '#94a3b8',
-                        value: nodeValue(n.name)
+                        color: (fullNodeIndex[n.name] !== undefined && fullNodes[fullNodeIndex[n.name]] && fullNodes[fullNodeIndex[n.name]].color) || '#94a3b8',
+                        value: fullValueMap[n.name] || 0
                     });
                 });
                 // Layout each original column the same way the real layout does,

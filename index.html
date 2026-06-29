@@ -946,52 +946,102 @@
         // where inflow == outflow are collapsed — the source's links skip directly to
         // the pass-through node's targets.
         function computePassThroughGraph(origNodes, origLinks) {
+            // Expanded mode: return data unchanged
             if (showPassThrough) return { nodes: origNodes, links: origLinks };
 
-            const inf = {}, out = {};
-            origNodes.forEach(n => { inf[n.name] = 0; out[n.name] = 0; });
-            origLinks.forEach(l => {
-                if (out[l.source] !== undefined) out[l.source] += l.value;
-                if (inf[l.target] !== undefined) inf[l.target] += l.value;
-            });
+            // Collapsed mode: remove pure pass-through nodes — nodes where every unit
+            // that flows in also flows straight back out to a SINGLE successor that shares
+            // the same display name (e.g. Aviva@1 whose only outbound link is to Aviva@2).
+            //
+            // Detection rules for a collapsible pass-through node N:
+            //   1. N has exactly ONE outbound link (to a single successor S).
+            //   2. The display name of N equals the display name of S.
+            //   3. Total inflow into N == value of the single outbound link (pure pass-through).
+            //
+            // When N is collapsed: every inbound link X→N is rewritten as X→S instead.
+            // The link N→S itself is dropped. S keeps all its other inbound/outbound links.
+            //
+            // This is applied iteratively so chains longer than two (e.g. A@1→A@2→A@3) fully
+            // collapse in a single call (each iteration removes one layer until no more remain).
 
-            // Use same resolution priority as displayNameFor: label > displayName > name
-            const displayOf = {};
-            origNodes.forEach(n => {
-                if (n.label !== undefined) displayOf[n.name] = n.label; // may be ""
-                else if (n.displayName && n.displayName.trim()) displayOf[n.name] = n.displayName.trim();
-                else displayOf[n.name] = n.name;
-            });
+            // Helper: display name for a node (mirrors displayNameFor() from the render layer)
+            const nodeMap = {};
+            origNodes.forEach(n => { nodeMap[n.name] = n; });
+            function dispName(nodeName) {
+                const n = nodeMap[nodeName];
+                if (!n) return nodeName.replace(/@\d+$/, '');
+                if (n.label !== undefined) return n.label;
+                if (n.displayName && n.displayName.trim()) return n.displayName.trim();
+                return nodeName.replace(/@\d+$/, '');
+            }
 
-            const passThroughSet = new Set();
-            origNodes.forEach(n => {
-                if (Math.abs(inf[n.name] - out[n.name]) > 0.01) return;
-                if (inf[n.name] === 0 || out[n.name] === 0) return;
-                const preds = origLinks.filter(l => l.target === n.name).map(l => l.source);
-                const myDisplay = displayOf[n.name];
-                if (myDisplay === '') return; // explicitly suppressed labels: don't auto-collapse
-                if (preds.length > 0 && preds.every(p => displayOf[p] === myDisplay)) {
-                    passThroughSet.add(n.name);
-                }
-            });
+            let nodes = origNodes.slice();
+            let links = origLinks.slice();
 
-            if (passThroughSet.size === 0) return { nodes: origNodes, links: origLinks };
+            let changed = true;
+            while (changed) {
+                changed = false;
 
-            const keptNodes = origNodes.filter(n => !passThroughSet.has(n.name));
-            const newLinks = [];
-            origLinks.forEach(l => {
-                if (!passThroughSet.has(l.source) && !passThroughSet.has(l.target)) {
-                    newLinks.push(l);
-                } else if (!passThroughSet.has(l.source) && passThroughSet.has(l.target)) {
-                    // Rewire: skip the pass-through, connect source directly to its targets
-                    origLinks
-                        .filter(l2 => l2.source === l.target && !passThroughSet.has(l2.target))
-                        .forEach(l2 => newLinks.push({ source: l.source, target: l2.target, value: l2.value }));
-                }
-                // Links originating FROM a pass-through are consumed by the rewiring above
-            });
+                // Build adjacency info fresh each pass
+                const outLinks = {};   // nodeName → [link, ...]
+                const inLinks  = {};   // nodeName → [link, ...]
+                nodes.forEach(n => { outLinks[n.name] = []; inLinks[n.name] = []; });
+                links.forEach(l => {
+                    if (outLinks[l.source]) outLinks[l.source].push(l);
+                    if (inLinks[l.target])  inLinks[l.target].push(l);
+                });
 
-            return { nodes: keptNodes, links: newLinks };
+                const removeSet = new Set();
+                const redirect  = {};  // removedNode → successorName
+
+                nodes.forEach(n => {
+                    const outs = outLinks[n.name] || [];
+                    const ins  = inLinks[n.name]  || [];
+                    if (ins.length === 0) return;   // source node — never collapse
+                    if (outs.length !== 1) return;  // must have exactly one outbound link
+
+                    const successor = outs[0].target;
+                    if (successor === n.name) return; // self-loop guard
+
+                    // Display names must match
+                    if (dispName(n.name) !== dispName(successor)) return;
+
+                    // Total inflow must equal the single outbound value (pure pass-through)
+                    const totalIn  = ins.reduce((s, l) => s + l.value, 0);
+                    const totalOut = outs[0].value;
+                    if (Math.abs(totalIn - totalOut) > 1e-9) return;
+
+                    removeSet.add(n.name);
+                    redirect[n.name] = successor;
+                });
+
+                if (removeSet.size === 0) break;
+
+                // Rewrite links: X → removed becomes X → redirect[removed]
+                const newLinks = [];
+                links.forEach(l => {
+                    if (removeSet.has(l.source)) return; // drop the N→S link itself
+                    if (removeSet.has(l.target)) {
+                        // Redirect X → removed  to  X → successor
+                        // Merge with an existing X→successor link if one was already added
+                        const newTarget = redirect[l.target];
+                        const existing = newLinks.find(x => x.source === l.source && x.target === newTarget);
+                        if (existing) {
+                            existing.value += l.value;
+                        } else {
+                            newLinks.push({ source: l.source, target: newTarget, value: l.value, color: l.color });
+                        }
+                    } else {
+                        newLinks.push(l);
+                    }
+                });
+
+                nodes = nodes.filter(n => !removeSet.has(n.name));
+                links = newLinks;
+                changed = true; // run another pass to catch chains
+            }
+
+            return { nodes, links };
         }
 
         // ---- V3 editor mode switching ----

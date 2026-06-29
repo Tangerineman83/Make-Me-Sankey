@@ -587,6 +587,10 @@
                                    oninput="updateCanvasOpacity(this.value)">
                             <span id="opacity-slider-readout" class="text-[11px] font-semibold text-[#5b5648] min-w-[28px] tabular-nums">45%</span>
                         </div>
+                        <div class="pill-toggle-group">
+                            <button id="show-values-btn" onclick="toggleShowValues()" class="pill-toggle-btn is-active" title="Show or hide numeric values on nodes">Values</button>
+                            <button id="pass-through-btn" onclick="togglePassThrough()" class="pill-toggle-btn is-active" title="Collapse identical pass-through nodes">Pass-through</button>
+                        </div>
                     </div>
                     <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
                 </div>
@@ -610,6 +614,8 @@
         let globalOpacityValue = 0.45; 
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
+        let showValues = true;      // when false, value chips/labels are hidden and only node names show
+        let showPassThrough = true; // when false, exact pass-through nodes (equal inflow=outflow, same displayName chain) are collapsed
         let activeGradientsCache = [];
 
         // ---- V3 series model ----
@@ -797,7 +803,7 @@
 
         function saveToLocalStorage() {
             try {
-                const payload = { globalOpacityValue, paletteMode, ribbonStyle, themePalette };
+                const payload = { globalOpacityValue, paletteMode, ribbonStyle, themePalette, showValues, showPassThrough };
                 if (isV3Mode()) {
                     payload.seriesColumns = seriesColumns;
                     payload.seriesModel   = seriesModel;
@@ -805,6 +811,7 @@
                 } else {
                     payload.links = links;
                     payload.nodeRegistry = nodeRegistry;
+                    payload.nodeLabels   = nodeLabels;
                     payload.columnLabels = columnLabels;
                 }
                 localStorage.setItem('sankeyWorkspaceData_v15', JSON.stringify(payload));
@@ -819,16 +826,19 @@
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
+                    showValues      = data.showValues      !== undefined ? !!data.showValues      : true;
+                    showPassThrough = data.showPassThrough !== undefined ? !!data.showPassThrough : true;
                     if (Array.isArray(data.themePalette) && data.themePalette.length === 8) themePalette = data.themePalette;
                     if (data.seriesModel) {
                         seriesColumns = data.seriesColumns || [];
                         seriesModel   = data.seriesModel;
                         seriesFlows   = data.seriesFlows || [];
-                        nodes = []; links = []; columnLabels = []; nodeRegistry = {};
+                        nodes = []; links = []; columnLabels = []; nodeRegistry = {}; nodeLabels = {};
                     } else {
                         links = data.links || [];
                         columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
                         nodeRegistry = data.nodeRegistry || {};
+                        nodeLabels   = data.nodeLabels   || {};
                         // Rebuild nodeRegistry from saved nodes array if no nodeRegistry saved
                         if (!data.nodeRegistry && Array.isArray(data.nodes)) {
                             data.nodes.forEach(n => { nodeRegistry[n.name] = { color: n.color }; });
@@ -903,6 +913,77 @@
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             generateDiagram();
             saveToLocalStorage();
+        }
+
+        function toggleShowValues() {
+            showValues = !showValues;
+            const btn = document.getElementById('show-values-btn');
+            if (btn) btn.classList.toggle('is-active', showValues);
+            generateDiagram();
+            saveToLocalStorage();
+        }
+
+        function togglePassThrough() {
+            showPassThrough = !showPassThrough;
+            const btn = document.getElementById('pass-through-btn');
+            if (btn) btn.classList.toggle('is-active', showPassThrough);
+            generateDiagram();
+            saveToLocalStorage();
+        }
+
+        // Compute the pass-through collapsed version of nodes/links.
+        // A node is a "pass-through" if: it has exactly one unique displayName chain
+        // where in@value == out@value and the displayName is identical to an adjacent node.
+        // In practice: nodes with the same displayName appearing in adjacent columns
+        // where inflow == outflow are collapsed — the source's links skip directly to
+        // the pass-through node's targets.
+        function computePassThroughGraph(origNodes, origLinks) {
+            if (showPassThrough) return { nodes: origNodes, links: origLinks };
+
+            const inf = {}, out = {};
+            origNodes.forEach(n => { inf[n.name] = 0; out[n.name] = 0; });
+            origLinks.forEach(l => {
+                if (out[l.source] !== undefined) out[l.source] += l.value;
+                if (inf[l.target] !== undefined) inf[l.target] += l.value;
+            });
+
+            // Use same resolution priority as displayNameFor: label > displayName > name
+            const displayOf = {};
+            origNodes.forEach(n => {
+                if (n.label !== undefined) displayOf[n.name] = n.label; // may be ""
+                else if (n.displayName && n.displayName.trim()) displayOf[n.name] = n.displayName.trim();
+                else displayOf[n.name] = n.name;
+            });
+
+            const passThroughSet = new Set();
+            origNodes.forEach(n => {
+                if (Math.abs(inf[n.name] - out[n.name]) > 0.01) return;
+                if (inf[n.name] === 0 || out[n.name] === 0) return;
+                const preds = origLinks.filter(l => l.target === n.name).map(l => l.source);
+                const myDisplay = displayOf[n.name];
+                if (myDisplay === '') return; // explicitly suppressed labels: don't auto-collapse
+                if (preds.length > 0 && preds.every(p => displayOf[p] === myDisplay)) {
+                    passThroughSet.add(n.name);
+                }
+            });
+
+            if (passThroughSet.size === 0) return { nodes: origNodes, links: origLinks };
+
+            const keptNodes = origNodes.filter(n => !passThroughSet.has(n.name));
+            const newLinks = [];
+            origLinks.forEach(l => {
+                if (!passThroughSet.has(l.source) && !passThroughSet.has(l.target)) {
+                    newLinks.push(l);
+                } else if (!passThroughSet.has(l.source) && passThroughSet.has(l.target)) {
+                    // Rewire: skip the pass-through, connect source directly to its targets
+                    origLinks
+                        .filter(l2 => l2.source === l.target && !passThroughSet.has(l2.target))
+                        .forEach(l2 => newLinks.push({ source: l.source, target: l2.target, value: l2.value }));
+                }
+                // Links originating FROM a pass-through are consumed by the rewiring above
+            });
+
+            return { nodes: keptNodes, links: newLinks };
         }
 
         // ---- V3 editor mode switching ----
@@ -1118,6 +1199,7 @@
         // of truth for node colors. links[] stays as-is (source/target names).
         // On every table change: sync nodes[] from the registry, then render.
         let nodeRegistry = {}; // { "Aviva": { color: {themeIndex, variant} } }
+        let nodeLabels   = {}; // { "Aviva": "custom label" } — "" means suppress; undefined means use name
 
         const THEME_ORDER = [2, 3, 4, 5, 6, 7, 0, 1];
         function nextAutoColor() {
@@ -1136,16 +1218,14 @@
 
         // Rebuild nodes[] from nodeRegistry + current link names
         function syncNodesFromRegistry() {
-            // Gather all names actually used in links
             const usedNames = new Set();
             links.forEach(l => { if (l.source) usedNames.add(l.source); if (l.target) usedNames.add(l.target); });
-            // Prune registry to only used names (keep colors for reuse if re-added)
-            // Actually: keep registry entries so color survives a temporary delete
-            // Just sync nodes[] array for the renderer
             nodes = [];
             usedNames.forEach(name => {
                 ensureNode(name);
-                nodes.push({ name, color: nodeRegistry[name].color });
+                const n = { name, color: nodeRegistry[name].color };
+                if (nodeLabels[name] !== undefined) n.label = nodeLabels[name]; // "" = suppress
+                nodes.push(n);
             });
         }
 
@@ -1383,8 +1463,85 @@
             const name = dotEl.dataset.node;
             if (!name) return;
             ensureNode(name);
-            const colorRef = nodeRegistry[name].color;
-            openColorPicker(dotEl, colorRef, (newRef) => {
+
+            // Close any existing node-props popover first
+            const existing = document.getElementById('node-props-popover');
+            if (existing) existing.remove();
+
+            const popover = document.createElement('div');
+            popover.id = 'node-props-popover';
+            popover.className = 'color-popover';
+            popover.style.cssText = 'min-width:210px; padding:12px 14px;';
+
+            const currentLabel = nodeLabels[name];
+            const labelPlaceholder = name; // placeholder shows the default (the node name itself)
+
+            popover.innerHTML = `
+                <div style="font-size:11px; font-weight:700; color:#9a9484; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">${escapeHtml(name)}</div>
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:10px; font-weight:700; color:#9a9484; text-transform:uppercase; letter-spacing:0.04em; display:block; margin-bottom:4px;">
+                        Label <span style="font-weight:500; text-transform:none; letter-spacing:0; color:#b3ad9c;">— leave blank to hide</span>
+                    </label>
+                    <input id="node-label-input" type="text" maxlength="40"
+                           value="${escapeAttr(currentLabel !== undefined ? currentLabel : '')}"
+                           placeholder="${escapeAttr(labelPlaceholder)}"
+                           style="width:100%; border:1px solid #e7e3d8; border-radius:7px; padding:5px 8px; font-size:12px; font-weight:500; color:#1c2127; box-sizing:border-box;"
+                           oninput="previewNodeLabel('${escapeAttr(name)}', this.value)">
+                    <div style="font-size:10px; color:#b3ad9c; margin-top:3px;">Default shows the node name. Type to override; clear to restore default.</div>
+                </div>
+                <button onclick="openColorPickerFromProps(this, '${escapeAttr(name)}')"
+                        style="display:flex; align-items:center; gap:6px; width:100%; background:#f4f2ed; border:none; border-radius:8px; padding:7px 10px; cursor:pointer; font-size:12px; font-weight:600; color:#1c2127;">
+                    <span style="width:14px; height:14px; border-radius:50%; background:${resolveThemeColor(nodeRegistry[name].color)}; border:1.5px solid rgba(0,0,0,0.12); flex-shrink:0;"></span>
+                    Change color
+                </button>
+            `;
+
+            document.body.appendChild(popover);
+            positionPopover(popover, dotEl);
+
+            // Focus label input
+            setTimeout(() => { const inp = popover.querySelector('#node-label-input'); if (inp) inp.focus(); }, 50);
+
+            // Close on outside click
+            setTimeout(() => {
+                document.addEventListener('mousedown', function handler(e) {
+                    if (!popover.contains(e.target) && e.target !== dotEl) {
+                        // Commit label on close
+                        const inp = popover.querySelector('#node-label-input');
+                        if (inp) commitNodeLabel(name, inp.value);
+                        popover.remove();
+                        document.removeEventListener('mousedown', handler);
+                    }
+                });
+            }, 0);
+        }
+
+        function previewNodeLabel(name, val) {
+            // Live preview as user types
+            if (val === '') delete nodeLabels[name];
+            else nodeLabels[name] = val;
+            syncNodesFromRegistry();
+            generateDiagram();
+        }
+
+        function commitNodeLabel(name, val) {
+            if (val.trim() === '') {
+                delete nodeLabels[name];
+            } else {
+                nodeLabels[name] = val.trim();
+            }
+            syncNodesFromRegistry();
+            renderSmartTable();
+            saveToLocalStorage();
+            generateDiagram();
+        }
+
+        function openColorPickerFromProps(btn, name) {
+            // Close the props popover, then open the color picker
+            const propsPop = document.getElementById('node-props-popover');
+            if (propsPop) propsPop.remove();
+            ensureNode(name);
+            openColorPicker(btn, nodeRegistry[name].color, (newRef) => {
                 nodeRegistry[name].color = newRef;
                 syncNodesFromRegistry();
                 renderSmartTable();
@@ -1454,14 +1611,12 @@
         // Assigns each node to a column (rank) by longest-path-from-source, so the
         // diagram reads left-to-right in true topological order regardless of the
         // order nodes/links were entered in.
-        function assignColumns(nodeNames, validLinks) {
+        function assignColumns(nodeNames, validLinks, nodeList) {
             const rank = {};
             // Seed from explicit node.column declarations first — the forward pass can only
             // push ranks higher, never lower, so a declared column acts as a guaranteed floor.
-            // This is what allows new entrants (no predecessors) and pinned-value terminal
-            // nodes to sit in the correct time-period column rather than drifting to column 0.
             nodeNames.forEach(n => {
-                const nodeObj = nodes.find(nd => nd.name === n);
+                const nodeObj = nodeList ? nodeList.find(nd => nd.name === n) : null;
                 rank[n] = (nodeObj && typeof nodeObj.column === 'number') ? nodeObj.column : 0;
             });
             const incoming = {};
@@ -1554,9 +1709,12 @@
                 return;
             }
 
+            // Apply pass-through collapsing if the toggle is off
+            const { nodes: renderNodes, links: renderLinks } = computePassThroughGraph(nodes, links);
+
             const nodeIndex = {};
-            nodes.forEach((n, i) => nodeIndex[n.name] = i);
-            const validLinks = links.filter(l => nodeIndex[l.source] !== undefined && nodeIndex[l.target] !== undefined && l.value > 0);
+            renderNodes.forEach((n, i) => nodeIndex[n.name] = i);
+            const validLinks = renderLinks.filter(l => nodeIndex[l.source] !== undefined && nodeIndex[l.target] !== undefined && l.value > 0);
 
             if (!validLinks.length) {
                 container.innerHTML = `
@@ -1568,8 +1726,8 @@
             }
 
             // ---- Column assignment ----
-            const nodeNames = nodes.map(n => n.name);
-            const rank = assignColumns(nodeNames, validLinks);
+            const nodeNames = renderNodes.map(n => n.name);
+            const rank = assignColumns(nodeNames, validLinks, renderNodes);
             const maxRank = Math.max(...Object.values(rank));
             const numCols = maxRank + 1;
 
@@ -1577,11 +1735,7 @@
             nodeNames.forEach(name => { colNodeNames[rank[name]].push(name); });
 
             function nodeValue(name) {
-                // If the node has an explicit value declared (node.value), that value IS
-                // the node's size regardless of what flows in or out. This is what enables
-                // multi-period diagrams where AUM grows organically between periods, and new
-                // entrants that appear at an intermediate column without any upstream flow.
-                const nodeObj = nodes.find(n => n.name === name);
+                const nodeObj = renderNodes.find(n => n.name === name);
                 if (nodeObj && typeof nodeObj.value === 'number' && nodeObj.value > 0) {
                     return nodeObj.value;
                 }
@@ -1590,14 +1744,14 @@
                 return inflow > 0 ? inflow : outflow;
             }
 
-            // Returns the display label for a node — uses node.displayName when set,
-            // falling back to node.name. This separates visual identity from data identity:
-            // "Aviva (2015)", "Aviva (2019)", "Aviva (2024)" can be three distinct nodes
-            // internally (required for unique link routing) while all displaying as "Aviva"
-            // in the rendered SVG, with the column label providing the time context instead.
             function displayNameFor(name) {
-                const nodeObj = nodes.find(n => n.name === name);
-                return (nodeObj && nodeObj.displayName && nodeObj.displayName.trim()) ? nodeObj.displayName.trim() : name;
+                const nodeObj = renderNodes.find(n => n.name === name);
+                if (!nodeObj) return name;
+                // node.label takes highest priority — explicitly set to "" means suppress the label
+                if (nodeObj.label !== undefined) return nodeObj.label; // may be ""
+                // node.displayName is the series-model display name (e.g. "Aviva" vs "Aviva@0")
+                if (nodeObj.displayName && nodeObj.displayName.trim()) return nodeObj.displayName.trim();
+                return name;
             }
 
             // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
@@ -1681,6 +1835,20 @@
                 wrappedLabel[n] = lines;
                 if (lines.length > 1) rightWraps = true;
             });
+            // Pre-compute middle-column labels using a width budget based on inter-column spacing.
+            // Centered labels can spill left and right of the node bar, but not past the midpoint
+            // between adjacent columns — so the max half-width is (inter-col gap)/2 minus a small
+            // safety margin. We defer the actual colX values (computed later) so use plotWidth
+            // as a proxy here; the rendering step clamps to a computed safe width at draw time.
+            const middleMaxW = numCols > 2 ? Math.max(60, (availableWForLabels * 0.6) / (numCols - 1)) : availableForText;
+            for (let c = 1; c < numCols - 1; c++) {
+                colNodeNames[c].forEach(n => {
+                    if (!wrappedLabel[n]) {
+                        const displayName = displayNameFor(n);
+                        wrappedLabel[n] = displayName ? wrapToFit(displayName, middleMaxW) : [];
+                    }
+                });
+            }
             // Margin only needs to fit the widest LINE now (post-wrap), not the widest whole
             // name — that's the entire point of wrapping.
             widestLeft = Math.max(0, ...leftNames.flatMap(n => wrappedLabel[n].map(line => measureTextWidth(line, labelFontStr))));
@@ -1712,7 +1880,8 @@
             // column so the topmost node/label doesn't touch the canvas edge — increased
             // when column labels are active to give them enough vertical room.
             const hasColLabels = columnLabels.some(l => l && l.trim());
-            const topPad = hasColLabels ? 36 : 18;
+            const hasMiddleCols = numCols > 2;
+            const topPad = hasColLabels ? 42 : (hasMiddleCols ? 28 : 18);
             const bottomPad = 18;
             // H is purely content-driven (how many nodes need how much vertical room to stay
             // legible) — it does NOT try to match the container's current height, because the
@@ -1739,7 +1908,7 @@
             const laidOut = colNodeNames.map(names => {
                 const colNodes = names.map(name => ({
                     name,
-                    color: (nodes[nodeIndex[name]] && nodes[nodeIndex[name]].color) || '#94a3b8',
+                    color: (renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].color) || '#94a3b8',
                     value: nodeValue(name)
                 })).sort((a, b) => b.value - a.value);
                 return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length));
@@ -1914,37 +2083,64 @@
                             svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
                             lineY += lineHeight;
                         });
-                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                        if (showValues) {
+                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                        }
                         svg += `</g>`;
                     });
                 } else {
-                    // Middle column: no floating text label (no safe space for one between
-                    // adjacent flow columns). The node itself remains hoverable/clickable
-                    // with its full name + value in the native tooltip already set on the
-                    // <rect> above; here we add only a tiny value chip if the node is tall
-                    // enough to hold one without crowding its neighbors. Uses a small white
-                    // pill background with dark ink text (matching --sk-ink) rather than
-                    // white text with a stroke halo directly on the node color — the halo
-                    // approach was confirmed hard to read (the stroke fights the fill text at
-                    // small sizes) and the pill stays legible on every node color, including
-                    // the saturated profit/cost accents.
-                    let lastChipMidY = -Infinity;
+                    // Middle columns: render name above the node bar (centered on node X),
+                    // value chip on the node bar itself. Both are suppressed for very thin
+                    // nodes. An explicit node.label = "" suppresses the name (advanced override).
+                    const midLabelFont = `600 ${Math.max(9, labelFontSize - 1).toFixed(1)}px Inter, system-ui, sans-serif`;
+                    const midLabelFontSize = Math.max(9, labelFontSize - 1);
+                    const midValueFontSize = Math.max(8, midLabelFontSize - 1);
+                    const midLineH = midLabelFontSize * 1.3;
+                    let lastLabelMidY = -Infinity;
+
                     col.forEach(n => {
                         const midY = (n.y0 + n.y1) / 2;
                         const nodeHeight = n.y1 - n.y0;
-                        const tallEnough = nodeHeight >= 16;
-                        const wouldCollide = midY - lastChipMidY < MIN_LABEL_GAP;
-                        if (!tallEnough || wouldCollide) return;
-                        lastChipMidY = midY;
-
                         const x = colX[c];
-                        const chipText = formatFlowValue(n.value);
-                        const chipTextW = measureTextWidth(chipText, '600 9.5px Inter, system-ui, sans-serif');
-                        const chipW = Math.ceil(chipTextW + 14);
-                        const chipH = 15;
+                        const displayName = displayNameFor(n.name);
+                        const suppressName = displayName === ''; // explicit blank = suppress
+                        const lines = (!suppressName && wrappedLabel[n.name]) ? wrappedLabel[n.name] : [];
+                        const hasName = lines.length > 0;
+                        const tooThin = nodeHeight < 8;
+                        if (tooThin) return;
+
+                        // Collision check against previous label in this column
+                        const wouldCollide = midY - lastLabelMidY < MIN_LABEL_GAP + (hasName ? midLineH * (lines.length + 1) : 0);
+                        if (wouldCollide && lastLabelMidY > -Infinity) return;
+                        lastLabelMidY = midY;
+
                         svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
-                        svg += `<rect x="${x - chipW / 2}" y="${midY - chipH / 2}" width="${chipW}" height="${chipH}" rx="3.5" fill="#ffffff" stroke="#e2dfd5" stroke-width="1"/>`;
-                        svg += `<text x="${x}" y="${midY + 3.3}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="9.5" fill="var(--sk-ink)">${chipText}</text>`;
+
+                        if (hasName) {
+                            // Name lines centered above the node bar
+                            const nameTotalH = lines.length * midLineH;
+                            const gapAbove = 3;
+                            let nameY = n.y0 - gapAbove - nameTotalH + midLineH * 0.8;
+                            // If name would go above the canvas top, flip below the node instead
+                            if (nameY < topPad + midLineH) {
+                                nameY = n.y1 + gapAbove + midLineH * 0.8;
+                            }
+                            lines.forEach(line => {
+                                svg += `<text x="${x.toFixed(1)}" y="${nameY.toFixed(1)}" text-anchor="middle" class="sk-label-name" font-size="${midLabelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                                nameY += midLineH;
+                            });
+                        }
+
+                        // Value chip on the node bar (only when tall enough and showValues is on)
+                        if (showValues && nodeHeight >= 16) {
+                            const chipText = formatFlowValue(n.value);
+                            const chipTextW = measureTextWidth(chipText, `600 9.5px Inter, system-ui, sans-serif`);
+                            const chipW = Math.ceil(chipTextW + 14);
+                            const chipH = 15;
+                            svg += `<rect x="${(x - chipW / 2).toFixed(1)}" y="${(midY - chipH / 2).toFixed(1)}" width="${chipW}" height="${chipH}" rx="3.5" fill="#ffffff" stroke="#e2dfd5" stroke-width="1"/>`;
+                            svg += `<text x="${x.toFixed(1)}" y="${(midY + 3.3).toFixed(1)}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="9.5" fill="var(--sk-ink)">${chipText}</text>`;
+                        }
+
                         svg += `</g>`;
                     });
                 }
@@ -2102,9 +2298,29 @@
                         );
                         if (!overridesOk) throw new Error("One or more nodes has an invalid 'value' or 'column' field.");
                         seriesColumns = null; seriesModel = null; seriesFlows = null;
-                        nodes = data.nodes; links = data.links;
+                        // Rebuild nodeRegistry and nodeLabels from the loaded nodes.
+                        // node.displayName is stored in nodeLabels so displayNameFor() can
+                        // resolve it. node.column and node.value stay on the node objects
+                        // themselves (passed through syncNodesFromRegistry).
+                        nodeRegistry = {};
+                        nodeLabels = {};
+                        data.nodes.forEach(n => {
+                            nodeRegistry[n.name] = { color: n.color };
+                            if (n.displayName && n.displayName !== n.name) nodeLabels[n.name] = n.displayName;
+                        });
+                        links = data.links;
+                        nodes = data.nodes; // keep full node objects (preserves .value, .column)
                         columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
-                        syncNodesFromRegistry(); renderSmartTable(); saveToLocalStorage(); generateDiagram();
+                        // syncNodesFromRegistry rebuilds nodes[] from registry+labels, but we
+                        // need to preserve value/column overrides from the loaded data. Re-apply them.
+                        syncNodesFromRegistry();
+                        data.nodes.forEach(src => {
+                            const dest = nodes.find(n => n.name === src.name);
+                            if (!dest) return;
+                            if (typeof src.value  === 'number') dest.value  = src.value;
+                            if (typeof src.column === 'number') dest.column = src.column;
+                        });
+                        renderSmartTable(); saveToLocalStorage(); generateDiagram();
                     } else {
                         throw new Error("This data file is from an older, incompatible version. Please re-create it in the current version.");
                     }
@@ -2222,7 +2438,7 @@
 
         function resetAll() {
             if (!confirm("Reset chart workspace entirely?")) return;
-            nodes = []; links = []; columnLabels = [];
+            nodes = []; links = []; columnLabels = []; nodeRegistry = {}; nodeLabels = {};
             seriesColumns = null; seriesModel = null; seriesFlows = null;
             localStorage.removeItem('sankeyWorkspaceData_v15');
             renderSmartTable();
@@ -2327,6 +2543,8 @@
             document.getElementById('style-standard-btn').classList.toggle('is-active', ribbonStyle === 'standard');
             document.getElementById('style-classic-btn').classList.toggle('is-active', ribbonStyle === 'classic');
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
+            document.getElementById('show-values-btn').classList.toggle('is-active', showValues);
+            document.getElementById('pass-through-btn').classList.toggle('is-active', showPassThrough);
             syncSystemThemeSelect();
             
             if (links.length === 0 && !isV3Mode()) {

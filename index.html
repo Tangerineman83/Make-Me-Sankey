@@ -1749,12 +1749,13 @@
 
             function displayNameFor(name) {
                 const nodeObj = renderNodes.find(n => n.name === name);
-                if (!nodeObj) return name;
-                // node.label takes highest priority — explicitly set to "" means suppress the label
-                if (nodeObj.label !== undefined) return nodeObj.label; // may be ""
-                // node.displayName is the series-model display name (e.g. "Aviva" vs "Aviva@0")
+                if (!nodeObj) return name.replace(/@\d+$/, '');
+                // node.label takes highest priority — explicitly set to "" means suppress
+                if (nodeObj.label !== undefined) return nodeObj.label;
+                // node.displayName (series model)
                 if (nodeObj.displayName && nodeObj.displayName.trim()) return nodeObj.displayName.trim();
-                return name;
+                // Final fallback: strip @N suffix so internal identity keys never leak into labels
+                return name.replace(/@\d+$/, '');
             }
 
             // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
@@ -2092,60 +2093,56 @@
                         svg += `</g>`;
                     });
                 } else {
-                    // Middle columns: render name above the node bar (centered on node X),
-                    // value chip on the node bar itself. Both are suppressed for very thin
-                    // nodes. An explicit node.label = "" suppresses the name (advanced override).
-                    const midLabelFont = `600 ${Math.max(9, labelFontSize - 1).toFixed(1)}px Inter, system-ui, sans-serif`;
-                    const midLabelFontSize = Math.max(9, labelFontSize - 1);
-                    const midValueFontSize = Math.max(8, midLabelFontSize - 1);
-                    const midLineH = midLabelFontSize * 1.3;
-                    let lastLabelMidY = -Infinity;
+                    // Middle columns: show ONE chip centred on the node bar — either
+                    // the £bn value (Values mode) or the provider name (Names mode).
+                    // Nothing floats above the bar. The chip is always at midY.
+                    // Thin nodes (< 14px) get no label.
+                    const chipFontStr = `600 9.5px Inter, system-ui, sans-serif`;
+                    const chipFontSize = 9.5;
+                    let lastChipMidY = -Infinity;
+                    const chipH = 15;
+                    const chipMinGap = chipH + 4; // minimum gap between chip centres
 
                     col.forEach(n => {
                         const midY = (n.y0 + n.y1) / 2;
                         const nodeHeight = n.y1 - n.y0;
                         const x = colX[c];
+
+                        if (nodeHeight < 14) return;
+                        if (midY - lastChipMidY < chipMinGap) return;
+                        lastChipMidY = midY;
+
                         const displayName = displayNameFor(n.name);
-                        const suppressName = displayName === '';
+                        const suppressLabel = displayName === '';
+                        if (suppressLabel) return;
 
-                        const tooThin = nodeHeight < 8;
-                        if (tooThin) return;
+                        let chipText;
+                        if (showValues) {
+                            chipText = formatFlowValue(n.value);
+                        } else {
+                            // Name chip: sized to text, centred on bar (can exceed bar width).
+                            // Cap at half the inter-column gap so chips don't collide with
+                            // adjacent columns' nodes or labels.
+                            const prevColX = c > 0 ? colX[c - 1] : colX[c] - 120;
+                            const nextColX = c < numCols - 1 ? colX[c + 1] : colX[c] + 120;
+                            const maxHalfW = Math.min(
+                                (colX[c] - prevColX) * 0.45,
+                                (nextColX - colX[c]) * 0.45
+                            );
+                            chipText = displayName;
+                            if (measureTextWidth(chipText, chipFontStr) / 2 + 6 > maxHalfW) {
+                                while (chipText.length > 1 && measureTextWidth(chipText + '\u2026', chipFontStr) / 2 + 6 > maxHalfW) {
+                                    chipText = chipText.slice(0, -1);
+                                }
+                                chipText += '\u2026';
+                            }
+                        }
 
-                        // When showing values: name floats above bar, value chip on bar.
-                        // When showing names: name floats above bar (no chip).
-                        // In both cases the floating name uses the pre-computed wrapped lines.
-                        const lines = (!suppressName && wrappedLabel[n.name]) ? wrappedLabel[n.name] : [];
-                        const hasName = lines.length > 0;
-
-                        // Collision gap accounts for floating name height
-                        const wouldCollide = midY - lastLabelMidY < MIN_LABEL_GAP + (hasName ? midLineH * (lines.length + 1) : 0);
-                        if (wouldCollide && lastLabelMidY > -Infinity) return;
-                        lastLabelMidY = midY;
-
+                        const chipTextW = measureTextWidth(chipText, chipFontStr);
+                        const chipW = Math.ceil(chipTextW + 12);
                         svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
-
-                        if (hasName) {
-                            // Name floats above (or below if near top) the node bar
-                            const nameTotalH = lines.length * midLineH;
-                            const gapAbove = 3;
-                            let nameY = n.y0 - gapAbove - nameTotalH + midLineH * 0.8;
-                            if (nameY < topPad + midLineH) nameY = n.y1 + gapAbove + midLineH * 0.8;
-                            lines.forEach(line => {
-                                svg += `<text x="${x.toFixed(1)}" y="${nameY.toFixed(1)}" text-anchor="middle" class="sk-label-name" font-size="${midLabelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
-                                nameY += midLineH;
-                            });
-                        }
-
-                        // Value chip on bar — only in Values mode, only when tall enough
-                        if (showValues && nodeHeight >= 16) {
-                            const chipText = formatFlowValue(n.value);
-                            const chipTextW = measureTextWidth(chipText, `600 9.5px Inter, system-ui, sans-serif`);
-                            const chipW = Math.ceil(chipTextW + 14);
-                            const chipH = 15;
-                            svg += `<rect x="${(x - chipW / 2).toFixed(1)}" y="${(midY - chipH / 2).toFixed(1)}" width="${chipW}" height="${chipH}" rx="3.5" fill="#ffffff" stroke="#e2dfd5" stroke-width="1"/>`;
-                            svg += `<text x="${x.toFixed(1)}" y="${(midY + 3.3).toFixed(1)}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="9.5" fill="var(--sk-ink)">${chipText}</text>`;
-                        }
-
+                        svg += `<rect x="${(x - chipW / 2).toFixed(1)}" y="${(midY - chipH / 2).toFixed(1)}" width="${chipW}" height="${chipH}" rx="3.5" fill="#ffffff" stroke="#e2dfd5" stroke-width="1"/>`;
+                        svg += `<text x="${x.toFixed(1)}" y="${(midY + 3.3).toFixed(1)}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="${chipFontSize}" fill="var(--sk-ink)">${escapeHtml(chipText)}</text>`;
                         svg += `</g>`;
                     });
                 }

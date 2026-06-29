@@ -1703,14 +1703,18 @@
         // Two-pass proportional height sizing: proportional share first, floored at a
         // minimum so thin flows stay legible; if the floor pushes the total past what's
         // available, every node scales down by the same factor so the column never overflows.
-        function layoutColumn(colNodes, usableH, topPad, gap) {
-            const total = colNodes.reduce((sum, n) => sum + n.value, 0) || 1;
+        // globalTotal: if provided, heights are proportional to the diagram-wide total rather
+        // than just this column's sum — keeps collapsed intermediate columns correctly scaled.
+        function layoutColumn(colNodes, usableH, topPad, gap, globalTotal) {
+            const colTotal = colNodes.reduce((sum, n) => sum + n.value, 0) || 1;
+            const total = globalTotal || colTotal;
             const totalGap = gap * Math.max(colNodes.length - 1, 0);
             const available = Math.max(usableH - totalGap, 0);
 
             const MIN_NODE_H = 6;
             const rawHeights = colNodes.map(n => n.value > 0 ? Math.max((n.value / total) * available, MIN_NODE_H) : 0);
             const rawTotal = rawHeights.reduce((sum, h) => sum + h, 0) || 1;
+            // Only scale down if overflowing; never scale up (column may be a subset of global).
             const scale = rawTotal > available ? available / rawTotal : 1;
 
             const totalUsed = rawHeights.reduce((s, h) => s + h * scale, 0) + totalGap;
@@ -1964,13 +1968,20 @@
             // Generous gap (research: premium examples use noticeably more vertical
             // breathing room between nodes than default chart-library packing).
             const gapFor = (count) => Math.max(8, Math.min(30, 420 / Math.max(count, 1)));
+            // Global total: the largest column sum across all columns. Used so every column
+            // scales its node heights against the same universe — critical when collapsed
+            // intermediate columns (e.g. only Mercer@2 + Lifesight@2 visible) would otherwise
+            // stretch to fill the full height instead of matching the scale of adjacent columns.
+            const globalTotal = Math.max(...colNodeNames.map(names =>
+                names.reduce((s, name) => s + nodeValue(name), 0)
+            ));
             const laidOut = colNodeNames.map(names => {
                 const colNodes = names.map(name => ({
                     name,
                     color: (renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].color) || '#94a3b8',
                     value: nodeValue(name)
                 })).sort((a, b) => b.value - a.value);
-                return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length));
+                return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length), globalTotal);
             });
             const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));
 

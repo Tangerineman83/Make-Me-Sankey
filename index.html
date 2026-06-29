@@ -591,6 +591,12 @@
                             <button id="show-values-btn" onclick="toggleShowValues()" class="pill-toggle-btn is-active" title="Show or hide numeric values on nodes">Values</button>
                             <button id="pass-through-btn" onclick="togglePassThrough()" class="pill-toggle-btn" title="Expand to show intermediate pass-through nodes">Expand</button>
                         </div>
+                        <div class="pill-toggle-group">
+                            <button class="aspect-btn pill-toggle-btn is-active" data-aspect="auto" onclick="setDiagramAspect('auto')" title="Auto height based on node count">Auto</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="16:9" onclick="setDiagramAspect('16:9')" title="Widescreen 16:9">16:9</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="4:3" onclick="setDiagramAspect('4:3')" title="Standard 4:3">4:3</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="portrait" onclick="setDiagramAspect('portrait')" title="Portrait 3:4">3:4</button>
+                        </div>
                     </div>
                     <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
                 </div>
@@ -614,6 +620,7 @@
         let globalOpacityValue = 0.45; 
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
+        let diagramAspect = 'auto'; // 'auto' | '4:3' | '16:9' | 'portrait'
         let showValues = true;      // when false, value chips/labels are hidden and only node names show
         let showPassThrough = false;  // false = collapsed (simpler view); true = show all intermediate nodes
         let activeGradientsCache = [];
@@ -803,7 +810,7 @@
 
         function saveToLocalStorage() {
             try {
-                const payload = { globalOpacityValue, paletteMode, ribbonStyle, themePalette, showValues, showPassThrough };
+                const payload = { globalOpacityValue, paletteMode, ribbonStyle, diagramAspect, themePalette, showValues, showPassThrough };
                 if (isV3Mode()) {
                     payload.seriesColumns = seriesColumns;
                     payload.seriesModel   = seriesModel;
@@ -826,6 +833,7 @@
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
+                    diagramAspect = ['auto','4:3','16:9','portrait'].includes(data.diagramAspect) ? data.diagramAspect : 'auto';
                     showValues      = data.showValues      !== undefined ? !!data.showValues      : true;
                     showPassThrough = data.showPassThrough !== undefined ? !!data.showPassThrough : true;
                     if (Array.isArray(data.themePalette) && data.themePalette.length === 8) themePalette = data.themePalette;
@@ -904,6 +912,15 @@
             document.getElementById('palette-branded-btn').classList.toggle('is-active', paletteMode === 'branded');
             generateDiagram();
             saveToLocalStorage();
+        }
+
+        function setDiagramAspect(aspect) {
+            diagramAspect = ['auto','4:3','16:9','portrait'].includes(aspect) ? aspect : 'auto';
+            document.querySelectorAll('.aspect-btn').forEach(b => {
+                b.classList.toggle('is-active', b.dataset.aspect === diagramAspect);
+            });
+            saveToLocalStorage();
+            generateDiagram();
         }
 
         function setRibbonStyle(style) {
@@ -1987,7 +2004,15 @@
             // pre-existing box. This is what actually fixes "doesn't fill the space": there's
             // no longer two independently-computed numbers (container height vs content height)
             // that can disagree and cause letterboxing.
-            const H = Math.max(320, nodeNames.length * 34 + topPad + bottomPad);
+            // H is content-driven by default; aspect ratio presets override it so
+            // the user can widen the diagram for presentation exports.
+            const contentH = Math.max(320, nodeNames.length * 34 + topPad + bottomPad);
+            const H = (() => {
+                if (diagramAspect === '4:3')    return Math.round(W * 3 / 4);
+                if (diagramAspect === '16:9')   return Math.round(W * 9 / 16);
+                if (diagramAspect === 'portrait') return Math.round(W * 4 / 3);
+                return contentH; // 'auto'
+            })();
             const usableH = H - topPad - bottomPad;
 
             const nodeThickness = 12;
@@ -2009,27 +2034,31 @@
             const globalTotal = Math.max(...colNodeNames.map(names =>
                 names.reduce((s, name) => s + nodeValue(name), 0)
             ));
-            // Expanded-graph sort order: for each node, its position (index) in its
-            // column when ALL nodes are present and sorted by value desc. Used below so
-            // residual @1 nodes (e.g. NOW@1, NatWest Cushon@1) keep their correct vertical
-            // slot within the full @1 column rather than being re-sorted amongst themselves.
-            const expandedSortOrder = (() => {
-                const order = {};
-                // Recompute column membership for the *original* (pre-collapse) graph
-                const origRankMap = assignColumns(
-                    nodes.map(n => n.name), links, nodes
-                );
+            // Build the expanded-graph column layout (all nodes, pre-collapse) so residual
+            // nodes inherit their exact y0/y1 positions from the full column rather than
+            // being re-packed amongst themselves. Ghost nodes (collapsed away) act as
+            // invisible spacers that still consume their share of vertical space.
+            const expandedColLayout = (() => {
+                const origRankMap = assignColumns(nodes.map(n => n.name), links, nodes);
                 const origMaxRank = Math.max(...Object.values(origRankMap));
                 const origColBuckets = Array.from({ length: origMaxRank + 1 }, () => []);
                 nodes.forEach(n => {
                     const r = origRankMap[n.name];
-                    if (r !== undefined) origColBuckets[r].push({ name: n.name, value: nodeValue(n.name) });
+                    if (r !== undefined) origColBuckets[r].push({
+                        name: n.name,
+                        color: (nodeIndex[n.name] !== undefined && renderNodes[nodeIndex[n.name]] && renderNodes[nodeIndex[n.name]].color) || '#94a3b8',
+                        value: nodeValue(n.name)
+                    });
                 });
+                // Layout each original column the same way the real layout does,
+                // so y0/y1 coordinates are directly comparable.
+                const posMap = {};
                 origColBuckets.forEach(col => {
-                    col.sort((a, b) => b.value - a.value)
-                       .forEach((n, i) => { order[n.name] = i; });
+                    const sorted = [...col].sort((a, b) => b.value - a.value);
+                    const laid = layoutColumn(sorted, usableH, topPad, gapFor(sorted.length), globalTotal);
+                    laid.forEach(seg => { posMap[seg.name] = seg; });
                 });
-                return order;
+                return posMap;
             })();
 
             const laidOut = colNodeNames.map(names => {
@@ -2037,17 +2066,19 @@
                     name,
                     color: (renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].color) || '#94a3b8',
                     value: nodeValue(name)
-                })).sort((a, b) => {
-                    // Primary: use the expanded-graph sort index so residual nodes keep
-                    // their original vertical position relative to the full column.
-                    const oa = expandedSortOrder[a.name], ob = expandedSortOrder[b.name];
-                    if (oa !== undefined && ob !== undefined) return oa - ob;
-                    if (oa !== undefined) return -1;
-                    if (ob !== undefined) return  1;
-                    // Fallback for nodes with no expanded-graph order (shouldn't occur)
-                    return b.value - a.value;
-                });
-                return layoutColumn(colNodes, usableH, topPad, gapFor(colNodes.length), globalTotal);
+                }));
+
+                // If every node in this column has a position from the expanded layout,
+                // use those positions directly (preserves exact y0/y1 from the full column).
+                // Otherwise fall back to a fresh pack (e.g. the @2 column or endpoints).
+                const allHaveExpanded = colNodes.every(n => expandedColLayout[n.name]);
+                if (allHaveExpanded) {
+                    return colNodes.map(n => ({ ...n, ...expandedColLayout[n.name] }));
+                }
+
+                // Standard pack: sort by value desc, layout normally.
+                const sorted = [...colNodes].sort((a, b) => b.value - a.value);
+                return layoutColumn(sorted, usableH, topPad, gapFor(sorted.length), globalTotal);
             });
             const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));
 
@@ -2703,8 +2734,11 @@
             document.getElementById('show-values-btn').textContent = showValues ? 'Values' : 'Names';
             document.getElementById('pass-through-btn').classList.toggle('is-active', showPassThrough);
             document.getElementById('pass-through-btn').textContent = showPassThrough ? 'Collapse' : 'Expand';
+            document.querySelectorAll('.aspect-btn').forEach(b => {
+                b.classList.toggle('is-active', b.dataset.aspect === diagramAspect);
+            });
             syncSystemThemeSelect();
-        
+            
             if (links.length === 0 && !isV3Mode()) {
                 loadDefaultExample();
                 document.getElementById('palette-restrained-btn').classList.toggle('is-active', paletteMode === 'restrained');

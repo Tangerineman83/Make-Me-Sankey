@@ -1881,44 +1881,44 @@
             }
 
             // ---- Sizing ----
-            // Every column gets floating labels (same style as edge columns). W grows to
-            // fit all labels rather than clipping or suppressing them. The aspect ratio
-            // is applied AFTER W is settled, so proportions stay correct regardless of
-            // how many middle columns need space.
+            // Core contract: every node in every column gets a visible label. W grows (and
+            // H follows via the aspect ratio) until that's true. The sequence is:
+            //   1. Fix font, measure all label text widths → margins + min plot width (horizontal)
+            //   2. Compute min H needed so every column's labels stack without overlap (vertical)
+            //   3. minW = max(containerW, horizontalMin, ceil(minH / aspectRatio))
+            //   4. H = round(W × aspectRatio) — always exact, never approximated
             const containerRectForSizing = container.getBoundingClientRect();
             const containerW = containerRectForSizing.width || 900;
 
-            function valueFontFor(labelFontStr) {
-                const sizeMatch = labelFontStr.match(/(\d+(?:\.\d+)?)px/);
-                const size = sizeMatch ? parseFloat(sizeMatch[1]) - 1 : 11.5;
-                return `700 ${size}px Inter, system-ui, sans-serif`;
+            function valueFontFor(f) {
+                const m = f.match(/(\d+(?:\.\d+)?)px/);
+                return `700 ${m ? parseFloat(m[1]) - 1 : 11.5}px Inter, system-ui, sans-serif`;
             }
 
             const baseLabelSize = 12.5;
             const labelFontSize = baseLabelSize;
             const valueFontSize = labelFontSize - 1;
-            const labelFontStr = `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
+            const labelFontStr  = `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
+            const lineHeight    = labelFontSize * 1.05;
+            // Label block height for one node: name line(s) + value line + inter-node gap.
+            // We don't know wrap yet, so use 1 name line as the floor; wrapping only increases it.
+            const labelBlockH   = lineHeight * 2 + 4; // name + value + 4px gap between nodes
 
-            // Measure the widest label text for every column.
-            // For middle columns, labels float to the right of the node bar (left-of-centre
-            // columns) or left (right-of-centre), so each middle column needs a half-width
-            // slot on each side. We compute the per-column max width, then derive the minimum
-            // inter-column gap needed, and let W grow so those gaps are always satisfied.
             function wrapToFit(name, maxW) {
                 if (measureTextWidth(name, labelFontStr) <= maxW) return [name];
                 const words = name.split(' ');
                 if (words.length === 1) return [name];
                 let line1 = words[0], i = 1;
                 for (; i < words.length; i++) {
-                    const candidate = line1 + ' ' + words[i];
-                    if (measureTextWidth(candidate, labelFontStr) > maxW) break;
-                    line1 = candidate;
+                    const cand = line1 + ' ' + words[i];
+                    if (measureTextWidth(cand, labelFontStr) > maxW) break;
+                    line1 = cand;
                 }
                 const line2 = words.slice(i).join(' ');
                 return line2 ? [line1, line2] : [name];
             }
 
-            // First pass: measure raw label widths unconstrained (we'll use these to size W).
+            // Unconstrained label width per node (name or value, whichever is wider).
             function rawLabelW(name) {
                 const dn = displayNameFor(name);
                 if (!dn) return 0;
@@ -1927,45 +1927,44 @@
                     measureTextWidth(formatFlowValue(nodeValue(name)), valueFontFor(labelFontStr))
                 );
             }
-            const colLabelW = colNodeNames.map(names =>
-                Math.max(0, ...names.map(rawLabelW))
-            );
+            const colLabelW = colNodeNames.map(names => Math.max(0, ...names.map(rawLabelW)));
 
-            // Edge margins: label width + leader (10) + gap (6) + node half-thickness (6)
-            const leaderPad = 22; // leader (10) + text gap (6) + node edge pad (6)
+            // ── Horizontal: margins + minimum plot width ──────────────────────────────
+            const leaderPad = 22; // leader(10) + text-gap(6) + node-edge(6)
             const leftMargin  = Math.ceil(colLabelW[0] + leaderPad);
             const rightMargin = Math.ceil(colLabelW[numCols - 1] + leaderPad);
 
-            // For middle columns: each column's labels float outward into the inter-column
-            // space. The required half-gap for column c is colLabelW[c] + leaderPad.
-            // The plot width must be at least: sum of all required half-gaps on each side.
-            // With numCols columns evenly spaced, inter-col gap = plotWidth/(numCols-1).
-            // Required: plotWidth/(numCols-1) >= max middle-col label width + leaderPad*2.
-            const midCols = colNodeNames.slice(1, numCols - 1);
-            const maxMidLabelW = midCols.length
-                ? Math.max(...midCols.map((names, i) => Math.max(0, ...names.map(rawLabelW))))
+            // Each middle column needs colLabelW[c] + leaderPad on each side of itself.
+            // Inter-column gap must be ≥ (left neighbour half-req + right neighbour half-req).
+            // Conservatively: gap ≥ maxMidLabelW + leaderPad*2 for all middle columns.
+            const maxMidLabelW = numCols > 2
+                ? Math.max(...colNodeNames.slice(1, numCols - 1).map(
+                    names => Math.max(0, ...names.map(rawLabelW))))
                 : 0;
-            const minInterColGap = maxMidLabelW > 0 ? maxMidLabelW + leaderPad * 2 : 80;
-            const minPlotWidthForLabels = numCols > 1
-                ? Math.ceil(minInterColGap * (numCols - 1))
-                : 160;
-            const minPlotWidth = Math.max(160, minPlotWidthForLabels);
+            const minInterColGap  = Math.max(80, maxMidLabelW + leaderPad * 2);
+            const minPlotWidth    = Math.max(160, Math.ceil(minInterColGap * Math.max(numCols - 1, 1)));
 
-            // W must be large enough that H (derived from aspect ratio) gives each
-            // edge-column node at least enough vertical space to sit alongside its label.
-            // minNodeSlot = label block height: 2 text lines + gap = ~3 * lineHeight.
-            const minLineH = baseLabelSize * 1.05; // lineHeight at base font size
-            const minNodeSlot = minLineH * 3; // name + value + gap
-            const maxEdgeNodes = Math.max(colNodeNames[0].length, colNodeNames[numCols-1].length);
-            const minHForLabels = maxEdgeNodes * minNodeSlot + 60; // 60 = conservative topPad+bottomPad
-            const aspectRatio = diagramAspect === '4:3' ? 3/4 : diagramAspect === 'portrait' ? 4/3 : 9/16;
-            const minWForH = Math.ceil(minHForLabels / aspectRatio);
-            // W: largest of container width, label-space requirement, and H-driven floor.
+            // ── Vertical: minimum H so every column's labels fit without overlap ──────
+            const hasColLabels = columnLabels.some(l => l && l.trim());
+            const hasMiddleCols = numCols > 2;
+            const topPad    = hasColLabels ? 42 : (hasMiddleCols ? 28 : 18);
+            const bottomPad = 18;
+            // For each column, minUsableH = nodeCount × labelBlockH (labels never overlap).
+            const minUsableH = Math.max(...colNodeNames.map(names => names.length * labelBlockH));
+            const minH = minUsableH + topPad + bottomPad;
+
+            // ── W: satisfy horizontal AND vertical constraints ────────────────────────
+            const aspectRatio = diagramAspect === '4:3' ? 3/4
+                               : diagramAspect === 'portrait' ? 4/3
+                               : 9/16; // 16:9
+            const minWForH = Math.ceil(minH / aspectRatio);
             const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth, minWForH);
 
-            // Now compute wrappedLabel for each column using its actual available width.
-            // Edge columns: availableForText = their margin minus leader/pad.
-            // Middle columns: half the inter-column gap minus leader/pad.
+            // ── H from W via aspect ratio ─────────────────────────────────────────────
+            const H = Math.round(W * aspectRatio);
+            const usableH = H - topPad - bottomPad;
+
+            // ── wrappedLabel: now W is final, compute actual wrap budget per column ───
             const plotWidthActual = W - leftMargin - rightMargin;
             const interColGap = numCols > 1 ? plotWidthActual / (numCols - 1) : plotWidthActual;
             const wrappedLabel = {};
@@ -1976,27 +1975,11 @@
                     : Math.max(40, interColGap / 2 - leaderPad);
                 names.forEach(n => {
                     const dn = displayNameFor(n);
-                    wrappedLabel[n] = dn ? wrapToFit(dn, maxW) : [];
+                    wrappedLabel[n] = dn ? wrapToFit(dn, Math.max(40, maxW)) : [];
                 });
             });
             const leftWraps  = colNodeNames[0].some(n => wrappedLabel[n].length > 1);
             const rightWraps = colNodeNames[numCols-1].some(n => wrappedLabel[n].length > 1);
-
-            // W and H both come from the diagram's OWN content needs (available container
-            // width as a starting point, never squeezed below what labels/columns require;
-            // height driven by node count/density) — not from forcing the SVG into whatever
-            // topPad: space above the plot for column labels (if any) or breathing room.
-            const hasColLabels = columnLabels.some(l => l && l.trim());
-            const hasMiddleCols = numCols > 2;
-            const topPad = hasColLabels ? 42 : (hasMiddleCols ? 28 : 18);
-            const bottomPad = 18;
-            // H is derived from W via the chosen aspect ratio.
-            const H = (() => {
-                if (diagramAspect === '4:3')      return Math.round(W * 3 / 4);
-                if (diagramAspect === 'portrait')  return Math.round(W * 4 / 3);
-                return Math.round(W * 9 / 16);
-            })();
-            const usableH = H - topPad - bottomPad;
 
             const nodeThickness = 12;
             const plotLeft = leftMargin;
@@ -2219,7 +2202,6 @@
             // ---- Labels ----
             // Edge columns: always show name + value, floating away from the plot into the margin.
             // Middle columns: float into inter-column gap, skip nodes too thin to be visible.
-            const lineHeight = labelFontSize * 1.05;
 
             laidOut.forEach((col, c) => {
                 const isLeft  = c === 0;

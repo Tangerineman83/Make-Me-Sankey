@@ -344,6 +344,13 @@
                 grid-template-areas: "data diagram";
             }
         }
+        /* Landscape aspect ratios: diagram breaks out of the grid and spans full page width.
+           The data panel sits above it, full width. This gives the diagram every available
+           pixel of horizontal space regardless of how much data is in the left panel. */
+        .sankey-layout-grid.diagram-landscape {
+            grid-template-columns: 1fr;
+            grid-template-areas: "data" "diagram";
+        }
 
         /* Spreadsheet grid */
         #grid-table th, #grid-table td { border-bottom: 1px solid #f0eee6; padding: 0; }
@@ -592,10 +599,9 @@
                             <button id="pass-through-btn" onclick="togglePassThrough()" class="pill-toggle-btn" title="Expand to show intermediate pass-through nodes">Expand</button>
                         </div>
                         <div class="pill-toggle-group">
-                            <button class="aspect-btn pill-toggle-btn is-active" data-aspect="auto" onclick="setDiagramAspect('auto')" title="Auto height based on node count">Auto</button>
-                            <button class="aspect-btn pill-toggle-btn" data-aspect="16:9" onclick="setDiagramAspect('16:9')" title="Widescreen 16:9">16:9</button>
-                            <button class="aspect-btn pill-toggle-btn" data-aspect="4:3" onclick="setDiagramAspect('4:3')" title="Standard 4:3">4:3</button>
-                            <button class="aspect-btn pill-toggle-btn" data-aspect="portrait" onclick="setDiagramAspect('portrait')" title="Portrait 3:4">3:4</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="16:9" onclick="setDiagramAspect('16:9')" title="Widescreen landscape">16:9</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="4:3" onclick="setDiagramAspect('4:3')" title="Standard landscape">4:3</button>
+                            <button class="aspect-btn pill-toggle-btn" data-aspect="portrait" onclick="setDiagramAspect('portrait')" title="Portrait">Portrait</button>
                         </div>
                     </div>
                     <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
@@ -620,7 +626,7 @@
         let globalOpacityValue = 0.45; 
         let paletteMode = 'restrained'; // 'restrained' (research-backed default) | 'branded' (per-node hue)
         let ribbonStyle = 'standard'; // 'standard' (flat) | 'classic' (subtle brush texture) | 'modern' (subtle glass highlight)
-        let diagramAspect = 'auto'; // 'auto' | '4:3' | '16:9' | 'portrait'
+        let diagramAspect = '16:9'; // '16:9' | '4:3' | 'portrait'
         let showValues = true;      // when false, value chips/labels are hidden and only node names show
         let showPassThrough = false;  // false = collapsed (simpler view); true = show all intermediate nodes
         let activeGradientsCache = [];
@@ -833,7 +839,7 @@
                     globalOpacityValue = data.globalOpacityValue !== undefined ? data.globalOpacityValue : 0.45;
                     paletteMode = data.paletteMode === 'branded' ? 'branded' : 'restrained';
                     ribbonStyle = ['standard', 'classic', 'modern'].includes(data.ribbonStyle) ? data.ribbonStyle : 'standard';
-                    diagramAspect = ['auto','4:3','16:9','portrait'].includes(data.diagramAspect) ? data.diagramAspect : 'auto';
+                    diagramAspect = ['4:3','16:9','portrait'].includes(data.diagramAspect) ? data.diagramAspect : '16:9';
                     showValues      = data.showValues      !== undefined ? !!data.showValues      : true;
                     showPassThrough = data.showPassThrough !== undefined ? !!data.showPassThrough : true;
                     if (Array.isArray(data.themePalette) && data.themePalette.length === 8) themePalette = data.themePalette;
@@ -915,12 +921,18 @@
         }
 
         function setDiagramAspect(aspect) {
-            diagramAspect = ['auto','4:3','16:9','portrait'].includes(aspect) ? aspect : 'auto';
+            diagramAspect = ['4:3','16:9','portrait'].includes(aspect) ? aspect : '16:9';
             document.querySelectorAll('.aspect-btn').forEach(b => {
                 b.classList.toggle('is-active', b.dataset.aspect === diagramAspect);
             });
+            applyLandscapeClass();
             saveToLocalStorage();
             generateDiagram();
+        }
+
+        function applyLandscapeClass() {
+            const grid = document.querySelector('.sankey-layout-grid');
+            if (grid) grid.classList.toggle('diagram-landscape', diagramAspect !== 'portrait');
         }
 
         function setRibbonStyle(style) {
@@ -2004,14 +2016,12 @@
             // pre-existing box. This is what actually fixes "doesn't fill the space": there's
             // no longer two independently-computed numbers (container height vs content height)
             // that can disagree and cause letterboxing.
-            // H is content-driven by default; aspect ratio presets override it so
-            // the user can widen the diagram for presentation exports.
-            const contentH = Math.max(320, nodeNames.length * 34 + topPad + bottomPad);
+            // H is always derived from the chosen aspect ratio applied to W.
+            // 16:9 and 4:3 are landscape; portrait flips to 4:3 tall.
             const H = (() => {
-                if (diagramAspect === '4:3')    return Math.round(W * 3 / 4);
-                if (diagramAspect === '16:9')   return Math.round(W * 9 / 16);
-                if (diagramAspect === 'portrait') return Math.round(W * 4 / 3);
-                return contentH; // 'auto'
+                if (diagramAspect === '4:3')      return Math.round(W * 3 / 4);
+                if (diagramAspect === 'portrait')  return Math.round(W * 4 / 3);
+                return Math.round(W * 9 / 16);    // '16:9' default
             })();
             const usableH = H - topPad - bottomPad;
 
@@ -2124,18 +2134,16 @@
                 const ty1 = ty0 + (tNode.y1 - tNode.y0) * (l.value / tNode.value);
                 targetCursors.set(l.target, ty1);
 
-                // Gradient only on cross-entity flows between intermediate nodes.
-                // Flows to/from edge columns (Bundled Providers, Master Trust, Contract+Other)
-                // stay flat. Only mid-column cross-entity flows (e.g. NOW→Mercer) get gradients.
-                const isCrossEntityMid = paletteMode === 'branded'
-                    && sRank > 0 && tRank < numCols - 1   // both non-edge
-                    && displayNameFor(l.source) !== displayNameFor(l.target);
+                // In branded mode every ribbon gets a source→target gradient regardless
+                // of position — edge columns, middle columns, same-entity flows, all of them.
+                const srcColor = paletteMode === 'branded' && sNode.color ? resolveThemeColor(sNode.color) : null;
+                const tgtColor = paletteMode === 'branded' && tNode.color ? resolveThemeColor(tNode.color) : null;
                 return {
                     source: l.source, target: l.target, value: l.value,
                     sRank, tRank, sy0, sy1, ty0, ty1,
                     fillColor: resolveRibbonColor(l.target, tNode.color),
-                    sourceColor: isCrossEntityMid ? (sNode.color ? resolveThemeColor(sNode.color) : null) : null,
-                    targetColorRaw: isCrossEntityMid ? (tNode.color ? resolveThemeColor(tNode.color) : null) : null,
+                    sourceColor: srcColor,
+                    targetColorRaw: tgtColor,
                 };
             }).filter(Boolean);
 
@@ -2751,6 +2759,7 @@
             document.querySelectorAll('.aspect-btn').forEach(b => {
                 b.classList.toggle('is-active', b.dataset.aspect === diagramAspect);
             });
+            applyLandscapeClass();
             syncSystemThemeSelect();
             
             if (links.length === 0 && !isV3Mode()) {

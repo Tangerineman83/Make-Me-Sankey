@@ -1880,30 +1880,14 @@
                 return name.replace(/@\d+$/, '');
             }
 
-            // ---- Sizing: measure real text so margins are reserved correctly, not guessed ----
-            // Label font scales down (floored for legibility) when the container is narrow,
-            // rather than letting leftMargin/rightMargin grow to fit full-size text regardless
-            // of available width — that was the actual cause of the diagram's plot area being
-            // squeezed to a fraction of the canvas on narrow viewports: margins sized for
-            // 12.5px label text could consume most of the width before the ribbons got any
-            // room at all. maxMarginEach is a TARGET the font-shrink tries to hit, not a hard
-            // ceiling on the margin itself — if even the floored font size still doesn't fit
-            // (e.g. "Wearables & Home" on a very narrow phone), the margin grows to actually
-            // fit the text rather than clamping and silently letting the label run off the
-            // canvas edge. An earlier version of this fix capped the margin unconditionally,
-            // which fixed the width-fill problem but introduced real label clipping ("Wearables
-            // & Home" rendering as "rables & Home") — confirmed via rendered screenshot, not
-            // theoretical. Legibility always wins; the width target is a best-effort, not a
-            // guarantee.
+            // ---- Sizing ----
+            // Every column gets floating labels (same style as edge columns). W grows to
+            // fit all labels rather than clipping or suppressing them. The aspect ratio
+            // is applied AFTER W is settled, so proportions stay correct regardless of
+            // how many middle columns need space.
             const containerRectForSizing = container.getBoundingClientRect();
-            const availableWForLabels = containerRectForSizing.width || 900;
-            const maxMarginEach = Math.max(70, availableWForLabels * 0.32);
+            const containerW = containerRectForSizing.width || 900;
 
-            function measureLongest(names, font) {
-                return Math.max(0, ...names.map(n => Math.max(
-                    measureTextWidth(n, font), measureTextWidth(formatFlowValue(nodeValue(n)), valueFontFor(font))
-                )));
-            }
             function valueFontFor(labelFontStr) {
                 const sizeMatch = labelFontStr.match(/(\d+(?:\.\d+)?)px/);
                 const size = sizeMatch ? parseFloat(sizeMatch[1]) - 1 : 11.5;
@@ -1911,35 +1895,19 @@
             }
 
             const baseLabelSize = 12.5;
-            let labelFontSize = baseLabelSize;
-            const leftNames = colNodeNames[0];
-            const rightNames = colNodeNames[numCols - 1];
-            let widestLeft = measureLongest(leftNames, `600 ${labelFontSize}px Inter, system-ui, sans-serif`);
-            let widestRight = measureLongest(rightNames, `600 ${labelFontSize}px Inter, system-ui, sans-serif`);
-            const widestEither = Math.max(widestLeft, widestRight);
-            const availableForText = maxMarginEach - 40;
-            if (widestEither > availableForText && availableForText > 10) {
-                labelFontSize = Math.max(9.5, baseLabelSize * (availableForText / widestEither));
-            }
-            const valueFontSize = Math.max(8.5, labelFontSize - 1);
+            const labelFontSize = baseLabelSize;
+            const valueFontSize = labelFontSize - 1;
             const labelFontStr = `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
 
-            // If a label is still too wide for the margin budget even at the floored font
-            // size, wrap it onto a second line (word-aware: breaks at a space, never
-            // mid-word, unless a single word alone exceeds the width) rather than either (a)
-            // truncating it — loses meaning, e.g. "Gross Margin (Profit)" becoming
-            // "Gross Ma…" — or (b) growing W past the real container width to fit it on one
-            // line, which silently shrinks the whole diagram via the width:100% global
-            // downscale (confirmed by rendering: text that looked clipped in a screenshot
-            // was actually just scaled down along with everything else, not cut off by a
-            // boundary). Wrapping keeps every word intact and keeps W honest.
+            // Measure the widest label text for every column.
+            // For middle columns, labels float to the right of the node bar (left-of-centre
+            // columns) or left (right-of-centre), so each middle column needs a half-width
+            // slot on each side. We compute the per-column max width, then derive the minimum
+            // inter-column gap needed, and let W grow so those gaps are always satisfied.
             function wrapToFit(name, maxW) {
                 if (measureTextWidth(name, labelFontStr) <= maxW) return [name];
                 const words = name.split(' ');
-                if (words.length === 1) return [name]; // single long word: nothing to break on, leave as-is
-                // Greedy two-line split: add words to line 1 until the next word would
-                // overflow, then everything else goes to line 2. If line 2 ends up empty
-                // (shouldn't happen given the length check above) fall back to one line.
+                if (words.length === 1) return [name];
                 let line1 = words[0], i = 1;
                 for (; i < words.length; i++) {
                     const candidate = line1 + ' ' + words[i];
@@ -1949,79 +1917,75 @@
                 const line2 = words.slice(i).join(' ');
                 return line2 ? [line1, line2] : [name];
             }
-            const wrappedLabel = {};
-            let leftWraps = false, rightWraps = false;
-            leftNames.forEach(n => {
-                const lines = wrapToFit(displayNameFor(n), availableForText);
-                wrappedLabel[n] = lines;
-                if (lines.length > 1) leftWraps = true;
-            });
-            rightNames.forEach(n => {
-                const lines = wrapToFit(displayNameFor(n), availableForText);
-                wrappedLabel[n] = lines;
-                if (lines.length > 1) rightWraps = true;
-            });
-            // Pre-compute middle-column labels using a width budget based on inter-column spacing.
-            // Centered labels can spill left and right of the node bar, but not past the midpoint
-            // between adjacent columns — so the max half-width is (inter-col gap)/2 minus a small
-            // safety margin. We defer the actual colX values (computed later) so use plotWidth
-            // as a proxy here; the rendering step clamps to a computed safe width at draw time.
-            const middleMaxW = numCols > 2 ? Math.max(60, (availableWForLabels * 0.6) / (numCols - 1)) : availableForText;
-            for (let c = 1; c < numCols - 1; c++) {
-                colNodeNames[c].forEach(n => {
-                    if (!wrappedLabel[n]) {
-                        const displayName = displayNameFor(n);
-                        wrappedLabel[n] = displayName ? wrapToFit(displayName, middleMaxW) : [];
-                    }
-                });
-            }
-            // Margin only needs to fit the widest LINE now (post-wrap), not the widest whole
-            // name — that's the entire point of wrapping.
-            widestLeft = Math.max(0, ...leftNames.flatMap(n => wrappedLabel[n].map(line => measureTextWidth(line, labelFontStr))));
-            widestRight = Math.max(0, ...rightNames.flatMap(n => wrappedLabel[n].map(line => measureTextWidth(line, labelFontStr))));
 
-            // Margin = whatever the (now possibly-shrunk-and-wrapped) text actually needs.
-            // No clamping against maxMarginEach here — that target already did its job by
-            // driving the font-shrink and wrap decisions above; reapplying it as a hard
-            // ceiling on top of real text measurements is what caused the earlier clipping
-            // bug (see comment history above this function for the full failure chain).
-            const leftMargin = Math.ceil(widestLeft + 40);
-            const rightMargin = Math.ceil(widestRight + 40);
+            // First pass: measure raw label widths unconstrained (we'll use these to size W).
+            function rawLabelW(name) {
+                const dn = displayNameFor(name);
+                if (!dn) return 0;
+                return Math.max(
+                    measureTextWidth(dn, labelFontStr),
+                    measureTextWidth(formatFlowValue(nodeValue(name)), valueFontFor(labelFontStr))
+                );
+            }
+            const colLabelW = colNodeNames.map(names =>
+                Math.max(0, ...names.map(rawLabelW))
+            );
+
+            // Edge margins: label width + leader (10) + gap (6) + node half-thickness (6)
+            const leaderPad = 22; // leader (10) + text gap (6) + node edge pad (6)
+            const leftMargin  = Math.ceil(colLabelW[0] + leaderPad);
+            const rightMargin = Math.ceil(colLabelW[numCols - 1] + leaderPad);
+
+            // For middle columns: each column's labels float outward into the inter-column
+            // space. The required half-gap for column c is colLabelW[c] + leaderPad.
+            // The plot width must be at least: sum of all required half-gaps on each side.
+            // With numCols columns evenly spaced, inter-col gap = plotWidth/(numCols-1).
+            // Required: plotWidth/(numCols-1) >= max middle-col label width + leaderPad*2.
+            const midCols = colNodeNames.slice(1, numCols - 1);
+            const maxMidLabelW = midCols.length
+                ? Math.max(...midCols.map((names, i) => Math.max(0, ...names.map(rawLabelW))))
+                : 0;
+            const minInterColGap = maxMidLabelW > 0 ? maxMidLabelW + leaderPad * 2 : 80;
+            const minPlotWidthForLabels = numCols > 1
+                ? Math.ceil(minInterColGap * (numCols - 1))
+                : 160;
+            const minPlotWidth = Math.max(160, minPlotWidthForLabels);
+
+            // W: start from container width, but grow if labels need more space.
+            const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth);
+
+            // Now compute wrappedLabel for each column using its actual available width.
+            // Edge columns: availableForText = their margin minus leader/pad.
+            // Middle columns: half the inter-column gap minus leader/pad.
+            const plotWidthActual = W - leftMargin - rightMargin;
+            const interColGap = numCols > 1 ? plotWidthActual / (numCols - 1) : plotWidthActual;
+            const wrappedLabel = {};
+            colNodeNames.forEach((names, c) => {
+                const isEdge = c === 0 || c === numCols - 1;
+                const maxW = isEdge
+                    ? (c === 0 ? leftMargin - leaderPad : rightMargin - leaderPad)
+                    : Math.max(40, interColGap / 2 - leaderPad);
+                names.forEach(n => {
+                    const dn = displayNameFor(n);
+                    wrappedLabel[n] = dn ? wrapToFit(dn, maxW) : [];
+                });
+            });
+            const leftWraps  = colNodeNames[0].some(n => wrappedLabel[n].length > 1);
+            const rightWraps = colNodeNames[numCols-1].some(n => wrappedLabel[n].length > 1);
 
             // W and H both come from the diagram's OWN content needs (available container
             // width as a starting point, never squeezed below what labels/columns require;
             // height driven by node count/density) — not from forcing the SVG into whatever
-            // box shape the surrounding card happens to be. The <svg> element itself is set
-            // to width:100% / height:auto (see container.innerHTML below), so it always
-            // renders at its true aspect ratio and the page lays out around that, rather than
-            // letterboxing or squeezing the diagram into a mismatched box. This was the actual
-            // root cause of the "diagram doesn't fill the space" bug: H was previously derived
-            // independently of W with no shared aspect-ratio contract with the container.
-            const containerRect = containerRectForSizing;
-            const minPlotWidth = 160; // minimum width the ribbon/column area needs to stay legible
-            const W = Math.max(containerRect.width || 900, leftMargin + rightMargin + minPlotWidth);
-            // No headline/column-header band reserved — the diagram leads with the plot
-            // itself rather than a sentence above it (the headline was removed; see the
-            // change log for why). topPad is just enough breathing room above the tallest
-            // column so the topmost node/label doesn't touch the canvas edge — increased
-            // when column labels are active to give them enough vertical room.
+            // topPad: space above the plot for column labels (if any) or breathing room.
             const hasColLabels = columnLabels.some(l => l && l.trim());
             const hasMiddleCols = numCols > 2;
             const topPad = hasColLabels ? 42 : (hasMiddleCols ? 28 : 18);
             const bottomPad = 18;
-            // H is purely content-driven (how many nodes need how much vertical room to stay
-            // legible) — it does NOT try to match the container's current height, because the
-            // <svg> is rendered at width:100%/height:auto, so the page's layout follows the
-            // diagram's natural proportions rather than the diagram being squeezed to fit a
-            // pre-existing box. This is what actually fixes "doesn't fill the space": there's
-            // no longer two independently-computed numbers (container height vs content height)
-            // that can disagree and cause letterboxing.
-            // H is always derived from the chosen aspect ratio applied to W.
-            // 16:9 and 4:3 are landscape; portrait flips to 4:3 tall.
+            // H is derived from W via the chosen aspect ratio.
             const H = (() => {
                 if (diagramAspect === '4:3')      return Math.round(W * 3 / 4);
                 if (diagramAspect === 'portrait')  return Math.round(W * 4 / 3);
-                return Math.round(W * 9 / 16);    // '16:9' default
+                return Math.round(W * 9 / 16);
             })();
             const usableH = H - topPad - bottomPad;
 
@@ -2244,115 +2208,55 @@
             });
 
             // ---- Labels ----
-            // Only the leftmost and rightmost columns get full floating text labels —
-            // they're the only columns with dedicated margin space reserved for them
-            // (leftMargin/rightMargin, sized by actually measuring the longest label).
-            // Middle columns have no safe space of their own between two flow columns,
-            // which is exactly what caused the original bug (a middle-column label text
-            // box reaching into the right column's space on a narrow viewport). Middle
-            // nodes instead get a small in-place value chip directly on the node, plus
-            // the full name on hover via the native <title> tooltip already attached.
+            // Every column gets the same floating label treatment — name + value floated
+            // to the outside of the node bar. For edge columns this is the margin space;
+            // for middle columns labels float outward into the inter-column gap, alternating
+            // left/right so adjacent columns don't collide.
+            // W was grown above to guarantee there's always enough room, so no suppression.
             const lineHeight = labelFontSize * 1.05;
-            const MIN_LABEL_GAP = (leftWraps || rightWraps) ? 22 + lineHeight : 22;
 
             laidOut.forEach((col, c) => {
-                const isLeftmost = c === 0;
-                const isRightmost = c === numCols - 1;
-                const isEdgeColumn = isLeftmost || isRightmost;
+                // Label side: leftmost column → labels on left; rightmost → right;
+                // middle columns alternate: left-of-centre float right, right-of-centre float left.
+                // For a 4-col diagram (0,1,2,3): col 1 floats right, col 2 floats left.
+                const midCol = (numCols - 1) / 2;
+                const floatRight = c <= midCol; // true = label to the right of the bar
+                const isLeft  = c === 0;
+                const isRight = c === numCols - 1;
 
-                if (isEdgeColumn) {
-                    const isLeftSide = isLeftmost;
-                    let lastShownMidY = -Infinity;
+                // Edge columns float away from centre; middle columns float toward gap.
+                const labelOnRight = isLeft ? false : isRight ? true : floatRight;
 
-                    col.forEach(n => {
-                        const midY = (n.y0 + n.y1) / 2;
-                        const nodeHeight = n.y1 - n.y0;
-                        const tooThin = nodeHeight < 9;
-                        const wouldCollide = midY - lastShownMidY < MIN_LABEL_GAP;
-                        const showLabel = !tooThin && !wouldCollide;
+                col.forEach(n => {
+                    const midY = (n.y0 + n.y1) / 2;
+                    const nodeHeight = n.y1 - n.y0;
+                    if (nodeHeight < 4) return; // invisible node
 
-                        const x = colX[c];
-                        const edgeX = isLeftSide ? x - nodeThickness / 2 : x + nodeThickness / 2;
-                        const leaderLen = 10;
-                        const leaderEndX = isLeftSide ? edgeX - leaderLen : edgeX + leaderLen;
-                        const textX = isLeftSide ? leaderEndX - 6 : leaderEndX + 6;
-                        const anchor = isLeftSide ? 'end' : 'start';
+                    const lines = wrappedLabel[n.name] || [];
+                    if (!lines.length) return; // suppressed label (empty string override)
 
-                        if (!showLabel) return;
-                        lastShownMidY = midY;
+                    const x = colX[c];
+                    const edgeX = labelOnRight ? x + nodeThickness / 2 : x - nodeThickness / 2;
+                    const leaderLen = 10;
+                    const leaderEndX = labelOnRight ? edgeX + leaderLen : edgeX - leaderLen;
+                    const textX = labelOnRight ? leaderEndX + 6 : leaderEndX - 6;
+                    const anchor = labelOnRight ? 'start' : 'end';
 
-                        const lines = wrappedLabel[n.name] || [n.name];
-                        // Vertically center the whole label-plus-value block on the node's
-                        // midpoint: name line(s) stacked above, value line below.
-                        const blockLines = lines.length + 1; // +1 for the value line
-                        const blockH = blockLines * lineHeight;
-                        let lineY = midY - blockH / 2 + lineHeight * 0.78;
+                    const blockLines = lines.length + (showValues ? 1 : 0);
+                    const blockH = blockLines * lineHeight;
+                    let lineY = midY - blockH / 2 + lineHeight * 0.78;
 
-                        svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
-                        svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
-                        lines.forEach(line => {
-                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
-                            lineY += lineHeight;
-                        });
-                        if (showValues) {
-                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
-                        }
-                        svg += `</g>`;
+                    svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                    svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
+                    lines.forEach(line => {
+                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                        lineY += lineHeight;
                     });
-                } else {
-                    // Middle columns: show ONE chip centred on the node bar — either
-                    // the £bn value (Values mode) or the provider name (Names mode).
-                    // Nothing floats above the bar. The chip is always at midY.
-                    // Thin nodes (< 14px) get no label.
-                    const chipFontStr = `600 9.5px Inter, system-ui, sans-serif`;
-                    const chipFontSize = 9.5;
-                    let lastChipMidY = -Infinity;
-                    const chipH = 15;
-                    const chipMinGap = chipH + 4; // minimum gap between chip centres
-
-                    col.forEach(n => {
-                        const midY = (n.y0 + n.y1) / 2;
-                        const nodeHeight = n.y1 - n.y0;
-                        const x = colX[c];
-
-                        if (nodeHeight < 14) return;
-                        if (midY - lastChipMidY < chipMinGap) return;
-                        lastChipMidY = midY;
-
-                        const displayName = displayNameFor(n.name);
-                        const suppressLabel = displayName === '';
-                        if (suppressLabel) return;
-
-                        let chipText;
-                        if (showValues) {
-                            chipText = formatFlowValue(n.value);
-                        } else {
-                            // Name chip: sized to text, centred on bar (can exceed bar width).
-                            // Cap at half the inter-column gap so chips don't collide with
-                            // adjacent columns' nodes or labels.
-                            const prevColX = c > 0 ? colX[c - 1] : colX[c] - 120;
-                            const nextColX = c < numCols - 1 ? colX[c + 1] : colX[c] + 120;
-                            const maxHalfW = Math.min(
-                                (colX[c] - prevColX) * 0.45,
-                                (nextColX - colX[c]) * 0.45
-                            );
-                            chipText = displayName;
-                            if (measureTextWidth(chipText, chipFontStr) / 2 + 6 > maxHalfW) {
-                                while (chipText.length > 1 && measureTextWidth(chipText + '\u2026', chipFontStr) / 2 + 6 > maxHalfW) {
-                                    chipText = chipText.slice(0, -1);
-                                }
-                                chipText += '\u2026';
-                            }
-                        }
-
-                        const chipTextW = measureTextWidth(chipText, chipFontStr);
-                        const chipW = Math.ceil(chipTextW + 12);
-                        svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
-                        svg += `<rect x="${(x - chipW / 2).toFixed(1)}" y="${(midY - chipH / 2).toFixed(1)}" width="${chipW}" height="${chipH}" rx="3.5" fill="#ffffff" stroke="#e2dfd5" stroke-width="1"/>`;
-                        svg += `<text x="${x.toFixed(1)}" y="${(midY + 3.3).toFixed(1)}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="${chipFontSize}" fill="var(--sk-ink)">${escapeHtml(chipText)}</text>`;
-                        svg += `</g>`;
-                    });
-                }
+                    if (showValues) {
+                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                    }
+                    svg += `</g>`;
+                });
             });
 
             // ---- Column labels (x-axis style, drawn in topPad space above the plot) ----

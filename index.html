@@ -918,7 +918,10 @@
         function toggleShowValues() {
             showValues = !showValues;
             const btn = document.getElementById('show-values-btn');
-            if (btn) btn.classList.toggle('is-active', showValues);
+            if (btn) {
+                btn.classList.toggle('is-active', showValues);
+                btn.textContent = showValues ? 'Values' : 'Names';
+            }
             generateDiagram();
             saveToLocalStorage();
         }
@@ -2103,13 +2106,18 @@
                         const nodeHeight = n.y1 - n.y0;
                         const x = colX[c];
                         const displayName = displayNameFor(n.name);
-                        const suppressName = displayName === ''; // explicit blank = suppress
-                        const lines = (!suppressName && wrappedLabel[n.name]) ? wrappedLabel[n.name] : [];
-                        const hasName = lines.length > 0;
+                        const suppressName = displayName === '';
+
                         const tooThin = nodeHeight < 8;
                         if (tooThin) return;
 
-                        // Collision check against previous label in this column
+                        // When showing values: name floats above bar, value chip on bar.
+                        // When showing names: name floats above bar (no chip).
+                        // In both cases the floating name uses the pre-computed wrapped lines.
+                        const lines = (!suppressName && wrappedLabel[n.name]) ? wrappedLabel[n.name] : [];
+                        const hasName = lines.length > 0;
+
+                        // Collision gap accounts for floating name height
                         const wouldCollide = midY - lastLabelMidY < MIN_LABEL_GAP + (hasName ? midLineH * (lines.length + 1) : 0);
                         if (wouldCollide && lastLabelMidY > -Infinity) return;
                         lastLabelMidY = midY;
@@ -2117,21 +2125,18 @@
                         svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
 
                         if (hasName) {
-                            // Name lines centered above the node bar
+                            // Name floats above (or below if near top) the node bar
                             const nameTotalH = lines.length * midLineH;
                             const gapAbove = 3;
                             let nameY = n.y0 - gapAbove - nameTotalH + midLineH * 0.8;
-                            // If name would go above the canvas top, flip below the node instead
-                            if (nameY < topPad + midLineH) {
-                                nameY = n.y1 + gapAbove + midLineH * 0.8;
-                            }
+                            if (nameY < topPad + midLineH) nameY = n.y1 + gapAbove + midLineH * 0.8;
                             lines.forEach(line => {
                                 svg += `<text x="${x.toFixed(1)}" y="${nameY.toFixed(1)}" text-anchor="middle" class="sk-label-name" font-size="${midLabelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
                                 nameY += midLineH;
                             });
                         }
 
-                        // Value chip on the node bar (only when tall enough and showValues is on)
+                        // Value chip on bar — only in Values mode, only when tall enough
                         if (showValues && nodeHeight >= 16) {
                             const chipText = formatFlowValue(n.value);
                             const chipTextW = measureTextWidth(chipText, `600 9.5px Inter, system-ui, sans-serif`);
@@ -2544,6 +2549,7 @@
             document.getElementById('style-classic-btn').classList.toggle('is-active', ribbonStyle === 'classic');
             document.getElementById('style-modern-btn').classList.toggle('is-active', ribbonStyle === 'modern');
             document.getElementById('show-values-btn').classList.toggle('is-active', showValues);
+            document.getElementById('show-values-btn').textContent = showValues ? 'Values' : 'Names';
             document.getElementById('pass-through-btn').classList.toggle('is-active', showPassThrough);
             syncSystemThemeSelect();
             

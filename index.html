@@ -788,6 +788,122 @@
             return '#' + mix(r) + mix(g) + mix(b);
         }
 
+        // ---- Color picker (Office-style theme colors + tints/shades) ----
+        // One popover shared by every "change color" entry point (the source/target dot
+        // in the smart table, the "Change color" button in the node-props popover, etc).
+        // Layout: row 0 = the 8 base theme colors; rows 1-3 = each base color's lighter
+        // tints (80%/60%/40% toward white); rows 4-5 = each base color's darker shades
+        // (25%/50% toward black) — i.e. one column per theme slot, lightest at top to
+        // darkest at bottom, matching the Word/Excel "Theme Colors" picker layout.
+        let activeColorPickerPopover = null;
+
+        function closeColorPicker() {
+            if (activeColorPickerPopover) {
+                activeColorPickerPopover.remove();
+                activeColorPickerPopover = null;
+            }
+        }
+
+        function openColorPicker(anchorEl, currentRef, onPick) {
+            closeColorPicker();
+            // Also close the node-props popover if this picker was launched from it sitting
+            // underneath — they shouldn't both be open at once.
+            const existingProps = document.getElementById('node-props-popover');
+
+            const popover = document.createElement('div');
+            popover.id = 'color-picker-popover';
+            popover.className = 'color-popover';
+
+            const curTi = currentRef && typeof currentRef.themeIndex === 'number' ? currentRef.themeIndex : -1;
+            const curVariant = currentRef ? (currentRef.variant || 'base') : null;
+
+            function cell(ti, variant, hex) {
+                const isSelected = ti === curTi && variant === curVariant;
+                return `<div class="color-swatch-cell${isSelected ? ' is-selected' : ''}" style="background:${hex};"
+                             data-ti="${ti}" data-variant="${variant}" title="${hex}"
+                             onclick="pickColorSwatch(this)"></div>`;
+            }
+
+            let html = `<div class="color-popover-label">Theme Colors</div>`;
+            // Base row
+            html += `<div class="color-popover-row is-base-row">`;
+            themePalette.forEach((hex, ti) => { html += cell(ti, 'base', hex); });
+            html += `</div>`;
+            // Lighter tint rows: 80%, 60%, 40% (tint4, tint3, tint2)
+            ['tint4', 'tint3', 'tint2'].forEach(variant => {
+                html += `<div class="color-popover-row">`;
+                themePalette.forEach((hex, ti) => { html += cell(ti, variant, deriveVariant(hex, variant)); });
+                html += `</div>`;
+            });
+            // Darker shade rows: 25%, 50% (shade0, shade1)
+            ['shade0', 'shade1'].forEach(variant => {
+                html += `<div class="color-popover-row">`;
+                themePalette.forEach((hex, ti) => { html += cell(ti, variant, deriveVariant(hex, variant)); });
+                html += `</div>`;
+            });
+            html += `<div class="color-popover-hint">Lighter ↑ &nbsp;·&nbsp; Darker ↓</div>`;
+
+            popover.innerHTML = html;
+            document.body.appendChild(popover);
+            positionPopover(popover, anchorEl);
+            activeColorPickerPopover = popover;
+
+            // Stash the callback + dismiss-related popovers so pickColorSwatch can reach them
+            popover._onPick = onPick;
+            popover._dismissAlso = existingProps || null;
+
+            setTimeout(() => {
+                document.addEventListener('mousedown', function handler(e) {
+                    if (!popover.contains(e.target) && e.target !== anchorEl) {
+                        popover.remove();
+                        if (activeColorPickerPopover === popover) activeColorPickerPopover = null;
+                        document.removeEventListener('mousedown', handler);
+                    }
+                });
+            }, 0);
+        }
+
+        function pickColorSwatch(cellEl) {
+            const popover = cellEl.closest('#color-picker-popover');
+            if (!popover) return;
+            const ti = parseInt(cellEl.dataset.ti, 10);
+            const variant = cellEl.dataset.variant;
+            const ref = { themeIndex: ti, variant };
+            if (typeof popover._onPick === 'function') popover._onPick(ref);
+            if (popover._dismissAlso) popover._dismissAlso.remove();
+            popover.remove();
+            if (activeColorPickerPopover === popover) activeColorPickerPopover = null;
+        }
+
+        // Positions a popover near an anchor element, flipping above/left if it would
+        // overflow the viewport on that side. Uses fixed positioning math via
+        // getBoundingClientRect + scroll offsets so it works regardless of any
+        // transformed/scrolling ancestor.
+        function positionPopover(popover, anchorEl) {
+            const anchorRect = anchorEl.getBoundingClientRect();
+            const popRect = popover.getBoundingClientRect();
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+
+            let left = anchorRect.left;
+            let top = anchorRect.bottom + 6;
+
+            // Flip above the anchor if there's not enough room below
+            if (top + popRect.height > vh - 8) {
+                top = anchorRect.top - popRect.height - 6;
+            }
+            // Clamp horizontally so it never runs off the right or left edge
+            if (left + popRect.width > vw - 8) {
+                left = vw - popRect.width - 8;
+            }
+            if (left < 8) left = 8;
+            if (top < 8) top = 8;
+
+            popover.style.left = (left + scrollX) + 'px';
+            popover.style.top = (top + scrollY) + 'px';
+        }
+
         // variant is 'base', 'tint0'..'tint4' (tint0 = 10% lighter ... tint4 = 80% lighter),
         // or 'shade0'..'shade1' (shade0 = 25% darker, shade1 = 50% darker).
         function deriveVariant(baseHex, variant) {

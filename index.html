@@ -2381,13 +2381,24 @@
             }
             if (ribbonDefs) svg += `<defs>${ribbonDefs}</defs>`;
 
-            // Build gradient defs for cross-colour ribbons (branded mode, different source/target colours)
+            // Build gradient defs for cross-colour ribbons (branded mode, different source/target colours).
+            // IMPORTANT: gradientUnits="userSpaceOnUse" with absolute coordinates, NOT
+            // "objectBoundingBox". PowerPoint's SVG import goes through a DrawingML
+            // conversion layer (not a real SVG renderer) that reliably fails to resolve
+            // objectBoundingBox gradients on <path> elements — the shape silently gets no
+            // fill at all rather than falling back to a solid color. This was confirmed by
+            // the reported symptom exactly: nodes (plain solid fills, no gradient) rendered
+            // fine in PowerPoint, ribbons (objectBoundingBox gradients) vanished — while
+            // both rendered correctly in a real SVG engine (Edge). userSpaceOnUse with
+            // literal pixel coordinates computed per-ribbon (its own x0→x1 span) is the
+            // standard workaround and renders identically in both engines.
             const gradientDefs = [];
             ribbons.forEach((r, ri) => {
                 if (!r.sourceColor || !r.targetColorRaw) return;
                 if (r.sourceColor === r.targetColorRaw) return; // same colour — no gradient needed
-                // Use a simple hex compare; close-but-different colours still get a gradient
-                gradientDefs.push(`<linearGradient id="sk-ribbon-grad-${ri}" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+                const gx0 = colX[r.sRank], gx1 = colX[r.tRank];
+                const gy = (r.sy0 + r.sy1 + r.ty0 + r.ty1) / 4; // representative y, irrelevant for a horizontal gradient but required by spec
+                gradientDefs.push(`<linearGradient id="sk-ribbon-grad-${ri}" gradientUnits="userSpaceOnUse" x1="${gx0}" y1="${gy}" x2="${gx1}" y2="${gy}">
                     <stop offset="0%" stop-color="${r.sourceColor}"/>
                     <stop offset="100%" stop-color="${r.targetColorRaw}"/>
                 </linearGradient>`);
@@ -2574,10 +2585,77 @@
             svgEl.insertBefore(desc, svgEl.firstChild);
         }
 
+        // The _instructions block is purely documentation: the importer explicitly ignores
+        // any key it doesn't recognise, so this travels with every exported file without
+        // affecting how it loads back in. The goal is that a person — or an AI assistant
+        // populating this file on someone's behalf — can read this one block and know
+        // exactly what's valid, with no other reference needed.
+        function buildExportInstructions() {
+            return {
+                "READ_ME_FIRST": "This file is data for a Sankey diagram generator. The 'nodes' and 'links' arrays below are what actually render — everything in this _instructions block is documentation only and is ignored on import. Edit nodes/links/columnLabels directly; this block is safe to delete.",
+                "overview": "A Sankey diagram is nodes (vertical bars) connected by links (flows). Links point left-to-right: every link's source must be in an earlier or equal column to its target, never later. The diagram automatically figures out which column each node belongs to from the link structure — you never set columns directly except via the optional 'column' override field.",
+                "schema": {
+                    "version": "Must be the literal number 2. Required.",
+                    "nodes": "Array of node objects (see 'node_fields' below). Required. Every name referenced by any link's source/target must have an entry here.",
+                    "links": "Array of link objects (see 'link_fields' below). Required.",
+                    "columnLabels": "Optional array of strings, one per column, shown as headers above the diagram. columnLabels[0] labels the leftmost column, columnLabels[1] the next, and so on. Omit the array entirely, or use an empty string for any column you don't want labelled. Number of columns is determined automatically by the link structure (see 'how_columns_work')."
+                },
+                "node_fields": {
+                    "name": "REQUIRED. String. The unique internal identifier for this node — links reference nodes by this exact string. Must be unique across all nodes. Can contain spaces, ampersands, etc. Convention for pass-through chains: suffix with @1, @2, @3... (see 'pass_through_nodes' below) — but this is just a naming convention for your own clarity, not a special syntax the tool parses structurally.",
+                    "color": "REQUIRED. Object: { \"themeIndex\": 0-7, \"variant\": \"...\" }. themeIndex selects which of the 8 theme palette colors to use (0-indexed, so 8 valid values: 0,1,2,3,4,5,6,7). variant must be one of: 'base' (the theme color as-is), 'tint0' (10% lighter), 'tint1' (25% lighter), 'tint2' (40% lighter), 'tint3' (60% lighter), 'tint4' (80% lighter), 'shade0' (25% darker), 'shade1' (50% darker). This is a REFERENCE, not a literal hex color — if the user changes their theme palette later, every node using that themeIndex updates automatically. Do not put a hex string here.",
+                    "value": "OPTIONAL. Positive number. Only needed if you want to force a node's displayed total to differ from what its links sum to (rare — normally omit this and let it compute automatically from inflow/outflow).",
+                    "column": "OPTIONAL. Non-negative integer (0, 1, 2...). Pins a node to a specific column instead of letting the automatic layout decide. Use sparingly — only when the natural topology-derived column would be wrong for your intent. Most files should omit this entirely.",
+                    "displayName": "OPTIONAL. String. The label actually shown on the diagram for this node, if different from 'name'. Use this when 'name' needs a technical/unique suffix (e.g. 'Aviva@1') but you want the diagram to just show 'Aviva'. Omit to display 'name' as-is. Set to an empty string \"\" to suppress the label entirely (rare)."
+                },
+                "link_fields": {
+                    "source": "REQUIRED. String. Must exactly match a node's 'name'.",
+                    "target": "REQUIRED. String. Must exactly match a node's 'name'. Must be in the same or a later column than source — links never point backwards.",
+                    "value": "REQUIRED. Positive number. The flow magnitude — this is what determines the visual thickness of the ribbon and the size of the connected nodes. Use whatever unit makes sense for your data (£m, units, %, headcount, etc.) — the tool doesn't care about units, only relative magnitude."
+                },
+                "how_columns_work": "Columns are NOT something you assign per node in normal use. The tool walks the link graph: any node with no inbound links is column 0; every other node's column is (one more than the maximum column of anything that flows into it). So a simple A→B→C chain gives 3 columns automatically. If you want a node to skip a column or share a column with nodes it's not directly connected to at the same depth, use the optional node-level 'column' override — but most diagrams never need this.",
+                "flow_conservation": "Not strictly enforced by the tool, but for a coherent diagram every internal node's total inflow should equal its total outflow (a node that isn't a pure source or pure sink). If a node has only inbound links it's a terminal/sink (right-hand side). If it has only outbound links it's a source (left-hand side). Mismatched in/out on a middle node will still render, but will look like flow is appearing or disappearing.",
+                "pass_through_nodes": "If you want a node to be collapsible (foldable into its successor when the user clicks the diagram's 'Collapse' toggle), give it EXACTLY ONE outbound link, make the inflow exactly equal that one outbound link's value, and give it the same displayed name as its successor (either by literal 'name' match minus a suffix, or matching 'displayName' values). A common pattern: name the pre-state 'Provider@1' and the post-state 'Provider@2', both with displayName 'Provider' (or just rely on the tool's default behavior of stripping a trailing @N from the name for display). A node that splits into 2+ outbound links, or whose name doesn't match its successor's, will never collapse and will always render as its own column entry — this is useful for deliberately 'residual' nodes you always want visible.",
+                "color_strategy": "If you omit thinking about color entirely and just supply nodes without pre-assigning deliberate colors, the tool's auto-color feature (triggered automatically as the diagram is built, or via the 'Auto-color' button) will assign colors itself: every source/sink-column node gets theme color 0, and every internal node gets a distinct color cycling through theme colors 1-7 then through progressively lighter/darker variants, in top-to-bottom order matching the diagram's vertical layout. You only need to hand-pick 'color' values for nodes where the auto-assigned color would be wrong for your purposes (e.g. a node that should visually match a brand color).",
+                "minimal_example": {
+                    "version": 2,
+                    "nodes": [
+                        { "name": "Total", "color": { "themeIndex": 0, "variant": "base" } },
+                        { "name": "Category A", "color": { "themeIndex": 1, "variant": "base" } },
+                        { "name": "Category B", "color": { "themeIndex": 2, "variant": "base" } },
+                        { "name": "Outcome", "color": { "themeIndex": 0, "variant": "base" } }
+                    ],
+                    "links": [
+                        { "source": "Total", "target": "Category A", "value": 60 },
+                        { "source": "Total", "target": "Category B", "value": 40 },
+                        { "source": "Category A", "target": "Outcome", "value": 60 },
+                        { "source": "Category B", "target": "Outcome", "value": 40 }
+                    ],
+                    "columnLabels": ["Start", "Category", "End"]
+                }
+            };
+        }
+
         function exportJSON() {
             const data = isV3Mode()
                 ? { version: 3, columns: seriesColumns, series: seriesModel, flows: seriesFlows }
-                : (() => { const d = { version: 2, nodes, links }; if (columnLabels.length) d.columnLabels = columnLabels; return d; })();
+                : (() => {
+                    // Export uses 'displayName' (the documented, import-side field name).
+                    // Internally, the live nodes[] array uses '.label' (set by
+                    // syncNodesFromRegistry from the nodeLabels map) — translate here so a
+                    // round-tripped file (export, then re-import) actually preserves custom
+                    // labels instead of silently losing them to a field-name mismatch.
+                    const exportNodes = nodes.map(n => {
+                        const out = { name: n.name, color: n.color };
+                        if (typeof n.value === 'number') out.value = n.value;
+                        if (typeof n.column === 'number') out.column = n.column;
+                        if (n.label !== undefined) out.displayName = n.label; // "" preserved (suppress)
+                        return out;
+                    });
+                    const d = { version: 2, nodes: exportNodes, links };
+                    if (columnLabels.length) d.columnLabels = columnLabels;
+                    d._instructions = buildExportInstructions();
+                    return d;
+                  })();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -2775,32 +2853,89 @@
         }
 
         function loadDefaultExample() {
-            // Simple illustrative example using the smart table (flat v2 model).
-            // A concise income/allocation diagram that demonstrates the tool clearly.
+            // A deliberately richer demo than a plain 3-column flow — every feature the
+            // tool supports has at least one node/link/setting here that exercises it, so
+            // opening the app for the first time shows what "data in" can produce in
+            // "diagram out", not just the simplest possible case:
+            //
+            //  • Pass-through collapse: "Direct Sales" appears as Direct Sales@1 → Direct
+            //    Sales@2 with matching in/out value and identical display name — a true
+            //    pass-through that the Collapse toggle will fold into a single node.
+            //  • Residual (non-collapsing) node: "Partner Referrals" sits in the same
+            //    column as the @1 pass-through node but splits its output two ways, so it
+            //    can NEVER collapse — when Collapse is toggled this is the node that stays
+            //    behind and inherits its correct vertical position from the full layout.
+            //  • Custom label override: the "EMEA" node displays as "EMEA" but its
+            //    internal/raw name has a longer canonical form, demonstrating displayName.
+            //  • Manual color override: "Enterprise" is given an explicit theme color
+            //    that auto-color won't touch, alongside every other node which IS
+            //    auto-colored — shows the two systems coexisting.
+            //  • Pinned column: "Support Contracts" is forced to column 2 via an explicit
+            //    column override even though its natural topology rank would place it
+            //    elsewhere, demonstrating manual column pinning.
+            //  • Column labels: every column has a header, exercising that feature.
+            //  • Long name: "Professional Services & Consulting" exercises label wrapping.
+            //  • A very small value ("Other", 0.4) alongside large ones (Revenue, 410)
+            //    exercises the min-node-height floor and confirms labels never disappear.
             seriesColumns = null; seriesModel = null; seriesFlows = null;
-            nodeRegistry = {
-                'Revenue':         { color: { themeIndex: 4, variant: 'base' } },
-                'Services':        { color: { themeIndex: 7, variant: 'base' } },
-                'Product Sales':   { color: { themeIndex: 6, variant: 'base' } },
-                'R&D':             { color: { themeIndex: 5, variant: 'base' } },
-                'Operations':      { color: { themeIndex: 1, variant: 'base' } },
-                'Sales & Mktg':    { color: { themeIndex: 2, variant: 'base' } },
-                'Gross Profit':    { color: { themeIndex: 3, variant: 'base' } },
-            };
-            nodes = Object.entries(nodeRegistry).map(([name, v]) => ({ name, color: v.color }));
-            links = [
-                { source: 'Revenue',       target: 'Services',      value: 45 },
-                { source: 'Revenue',       target: 'Product Sales',  value: 85 },
-                { source: 'Services',      target: 'R&D',            value: 18 },
-                { source: 'Services',      target: 'Operations',     value: 12 },
-                { source: 'Services',      target: 'Gross Profit',   value: 15 },
-                { source: 'Product Sales', target: 'Sales & Mktg',   value: 30 },
-                { source: 'Product Sales', target: 'Operations',     value: 20 },
-                { source: 'Product Sales', target: 'Gross Profit',   value: 35 },
-            ];
-            columnLabels = [];
+            columnLabels = ['Revenue Source', 'Channel', 'Region', 'Outcome'];
             paletteMode = 'branded';
+            diagramAspect = '16:9';
+
+            nodeRegistry = {
+                'Revenue':                              { color: { themeIndex: 0, variant: 'base' } },
+                'Direct Sales@1':                        { color: { themeIndex: 1, variant: 'base' } },
+                'Partner Referrals':                     { color: { themeIndex: 2, variant: 'base' } },
+                'Professional Services & Consulting':    { color: { themeIndex: 3, variant: 'base' } },
+                'Direct Sales@2':                        { color: { themeIndex: 1, variant: 'base' } },
+                'EMEA_Region_Code_4471':                 { color: { themeIndex: 4, variant: 'base' } }, // internal id; displayed as "EMEA"
+                'Enterprise':                             { color: { themeIndex: 6, variant: 'tint3' } }, // manual override
+                'Support Contracts':                     { color: { themeIndex: 5, variant: 'base' } },
+                'Renewed Revenue':                       { color: { themeIndex: 7, variant: 'base' } },
+                'Other':                                  { color: { themeIndex: 7, variant: 'shade0' } },
+            };
+            nodeLabels = {
+                'EMEA_Region_Code_4471': 'EMEA', // demonstrates a REAL displayName override: technical internal name, clean displayed label
+            };
+            manualColorOverrides = { 'Enterprise': true };
+
+            links = [
+                // Revenue → channel (col 0 → col 1)
+                { source: 'Revenue', target: 'Direct Sales@1', value: 280 },
+                { source: 'Revenue', target: 'Partner Referrals', value: 90 },
+                { source: 'Revenue', target: 'Professional Services & Consulting', value: 40 },
+
+                // Direct Sales is a pure pass-through: 280 in, 280 out, same display name
+                { source: 'Direct Sales@1', target: 'Direct Sales@2', value: 280 },
+
+                // Partner Referrals splits — can never collapse
+                { source: 'Partner Referrals', target: 'EMEA_Region_Code_4471', value: 55 },
+                { source: 'Partner Referrals', target: 'Support Contracts', value: 35 },
+
+                // Professional Services flows straight into Support Contracts (col 1 → col 2)
+                { source: 'Professional Services & Consulting', target: 'Support Contracts', value: 40 },
+
+                // col 2 → col 3 (region/category → outcome)
+                { source: 'Direct Sales@2', target: 'Enterprise', value: 210 },
+                { source: 'Direct Sales@2', target: 'Renewed Revenue', value: 69.6 },
+                { source: 'Direct Sales@2', target: 'Other', value: 0.4 },
+                { source: 'EMEA_Region_Code_4471', target: 'Renewed Revenue', value: 55 },
+                { source: 'Support Contracts', target: 'Renewed Revenue', value: 75 },
+            ];
+
+            // Build nodes[] the same way the live app always does — from the registry,
+            // links, and label map — rather than hand-duplicating that logic here, so the
+            // demo data is guaranteed to be structured exactly like anything the app
+            // produces through normal use.
+            syncNodesFromRegistry();
+            // Pin "Support Contracts" to column 2 explicitly (its natural rank from
+            // Partner Referrals would already land it there, but this demonstrates the
+            // override mechanism is wired through end-to-end).
+            const supportNode = nodes.find(n => n.name === 'Support Contracts');
+            if (supportNode) supportNode.column = 2;
+
             renderSmartTable();
+            saveToLocalStorage();
             generateDiagram();
         }
 

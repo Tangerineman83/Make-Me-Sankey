@@ -249,6 +249,14 @@
         .sk-node.is-dimmed {
             opacity: 0.32;
         }
+        .sk-label {
+            cursor: pointer;
+        }
+        .sk-label:hover .sk-label-name {
+            text-decoration: underline;
+            text-decoration-color: rgba(28,33,39,0.35);
+            text-underline-offset: 2px;
+        }
 
         .sk-leader {
             stroke: #c7c2b8;
@@ -602,6 +610,9 @@
                             <button class="aspect-btn pill-toggle-btn" data-aspect="16:9" onclick="setDiagramAspect('16:9')" title="Widescreen landscape">16:9</button>
                             <button class="aspect-btn pill-toggle-btn" data-aspect="4:3" onclick="setDiagramAspect('4:3')" title="Standard landscape">4:3</button>
                             <button class="aspect-btn pill-toggle-btn" data-aspect="portrait" onclick="setDiagramAspect('portrait')" title="Portrait">Portrait</button>
+                        </div>
+                        <div class="pill-toggle-group">
+                            <button onclick="resetToAutoColors()" class="pill-toggle-btn" title="Re-color every node automatically by position and vertical order; clears any manually-picked colors">Auto-color</button>
                         </div>
                     </div>
                     <div id="col-labels-row" style="display:none;" class="col-labels-row"></div>
@@ -1445,12 +1456,83 @@
             return { themeIndex: ti, variant: 'base' };
         }
 
+        function resetToAutoColors() {
+            manualColorOverrides = {};
+            autoAssignColors();
+            syncNodesFromRegistry();
+            renderSmartTable();
+            saveToLocalStorage();
+            generateDiagram();
+        }
+
         function ensureNode(name) {
             if (!name || !name.trim()) return;
             const key = name.trim();
             if (!nodeRegistry[key]) {
-                nodeRegistry[key] = { color: nextAutoColor() };
+                // Placeholder until the next full autoAssignColors() pass gives it its
+                // real position-based color; keeps ensureNode() cheap and side-effect-free
+                // per call rather than re-running the whole topology scan on every keystroke.
+                nodeRegistry[key] = { color: { themeIndex: 0, variant: 'base' } };
             }
+        }
+
+        // ---- Automatic color allocation by topology + vertical order ----
+        // Edge nodes (the first and last column — i.e. sources with no inbound link, and
+        // sinks with no outbound link) all share theme color column 1 (themeIndex 0),
+        // base variant. Every internal node gets a color from a 42-slot sequence built from
+        // the remaining 7 theme colors × 6 variants (base, 80%/60%/40% lighter, 25%/50%
+        // darker), walked in the same order nodes are drawn: column by column left to
+        // right, and within each column top to bottom (i.e. by descending flow value,
+        // matching the render layout's own sort). This only OVERWRITES colors that the
+        // user hasn't manually customized (tracked via manualColorOverrides) so a person's
+        // hand-picked colors survive re-running this after adding/removing rows.
+        let manualColorOverrides = {}; // { nodeName: true } once a user explicitly sets a color
+
+        function autoAssignColors() {
+            const allNames = Array.from(new Set(links.flatMap(l => [l.source, l.target]).filter(Boolean)));
+            if (!allNames.length) return;
+
+            const rank = assignColumnsRaw(allNames, links);
+            const maxRank = Math.max(...Object.values(rank));
+
+            // Per-node value for vertical sort: total inflow, or total outflow if it's a
+            // pure source (matches the render layout's own nodeValue() logic).
+            function rawValue(name) {
+                const inflow = links.filter(l => l.target === name).reduce((s, l) => s + (l.value || 0), 0);
+                if (inflow > 0) return inflow;
+                return links.filter(l => l.source === name).reduce((s, l) => s + (l.value || 0), 0);
+            }
+
+            // Bucket names by column rank
+            const byCol = Array.from({ length: maxRank + 1 }, () => []);
+            allNames.forEach(n => byCol[rank[n]].push(n));
+            byCol.forEach(col => col.sort((a, b) => rawValue(b) - rawValue(a)));
+
+            // 42-slot internal-color sequence: theme indices 1-7, each through 6 variants.
+            const variantCycle = ['base', 'tint4', 'tint3', 'tint2', 'shade0', 'shade1'];
+            const internalSequence = [];
+            variantCycle.forEach(variant => {
+                for (let ti = 1; ti < themePalette.length; ti++) {
+                    internalSequence.push({ themeIndex: ti, variant });
+                }
+            });
+            // Order: cycle through theme colors first (1..7) within a variant, then move to
+            // the next variant — matches "cycling through theme colours then each tint/shade".
+            let seqIndex = 0;
+
+            byCol.forEach((col, c) => {
+                const isEdge = c === 0 || c === maxRank;
+                col.forEach(name => {
+                    if (manualColorOverrides[name]) return; // user already picked this one
+                    ensureNode(name);
+                    if (isEdge) {
+                        nodeRegistry[name].color = { themeIndex: 0, variant: 'base' };
+                    } else {
+                        nodeRegistry[name].color = internalSequence[seqIndex % internalSequence.length];
+                        seqIndex++;
+                    }
+                });
+            });
         }
 
         // Rebuild nodes[] from nodeRegistry + current link names
@@ -1668,6 +1750,7 @@
             ensureNode(name);
             links[rowIndex][field] = name;
             syncNodesFromRegistry();
+            autoAssignColors();
             renderSmartTable();
             saveToLocalStorage();
             generateDiagram();
@@ -1678,6 +1761,7 @@
             if (rowIndex < 0) return;
             const v = parseFloat(input.value);
             links[rowIndex].value = isNaN(v) ? 0 : v;
+            autoAssignColors();
             saveToLocalStorage();
             generateDiagram();
         }
@@ -1690,6 +1774,7 @@
         function deleteSmartRow(rowIndex) {
             links.splice(rowIndex, 1);
             syncNodesFromRegistry();
+            autoAssignColors();
             renderSmartTable();
             saveToLocalStorage();
             generateDiagram();
@@ -1699,6 +1784,22 @@
         function openNodeColorDot(dotEl) {
             const name = dotEl.dataset.node;
             if (!name) return;
+            openNodeProps(name, dotEl);
+        }
+
+        // ---- Node color/label from clicking the node directly in the diagram ----
+        function openNodeColorFromPlot(nodeEl) {
+            const name = nodeEl.dataset.name;
+            if (!name) return;
+            openNodeProps(name, nodeEl);
+        }
+
+        // Shared implementation: builds and shows the label+color props popover anchored
+        // to whatever element triggered it (smart-table dot, or a node bar/label in the
+        // actual SVG plot). Anchoring to the real click target — rather than e.g. always
+        // anchoring to a fixed corner — is what lets positionPopover() place it right next
+        // to whichever node was clicked, in-context, without scrolling.
+        function openNodeProps(name, anchorEl) {
             ensureNode(name);
 
             // Close any existing node-props popover first
@@ -1734,7 +1835,7 @@
             `;
 
             document.body.appendChild(popover);
-            positionPopover(popover, dotEl);
+            positionPopover(popover, anchorEl);
 
             // Focus label input
             setTimeout(() => { const inp = popover.querySelector('#node-label-input'); if (inp) inp.focus(); }, 50);
@@ -1742,7 +1843,7 @@
             // Close on outside click
             setTimeout(() => {
                 document.addEventListener('mousedown', function handler(e) {
-                    if (!popover.contains(e.target) && e.target !== dotEl) {
+                    if (!popover.contains(e.target) && e.target !== anchorEl) {
                         // Commit label on close
                         const inp = popover.querySelector('#node-label-input');
                         if (inp) commitNodeLabel(name, inp.value);
@@ -1780,6 +1881,7 @@
             ensureNode(name);
             openColorPicker(btn, nodeRegistry[name].color, (newRef) => {
                 nodeRegistry[name].color = newRef;
+                manualColorOverrides[name] = true; // protect from future autoAssignColors() passes
                 syncNodesFromRegistry();
                 renderSmartTable();
                 saveToLocalStorage();
@@ -2436,10 +2538,18 @@
             nodeEls.forEach(n => {
                 n.addEventListener('mouseenter', () => setHighlight(n.dataset.name));
                 n.addEventListener('mouseleave', () => setHighlight(null));
+                n.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openNodeColorFromPlot(n);
+                });
             });
             labelEls.forEach(l => {
                 l.addEventListener('mouseenter', () => setHighlight(l.dataset.name));
                 l.addEventListener('mouseleave', () => setHighlight(null));
+                l.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openNodeColorFromPlot(l);
+                });
             });
             ribbonEls.forEach(r => {
                 r.addEventListener('mouseenter', () => {
@@ -2521,8 +2631,10 @@
                         // themselves (passed through syncNodesFromRegistry).
                         nodeRegistry = {};
                         nodeLabels = {};
+                        manualColorOverrides = {};
                         data.nodes.forEach(n => {
                             nodeRegistry[n.name] = { color: n.color };
+                            if (n.color) manualColorOverrides[n.name] = true; // file specified it explicitly
                             if (n.displayName && n.displayName !== n.name) nodeLabels[n.name] = n.displayName;
                         });
                         links = data.links;

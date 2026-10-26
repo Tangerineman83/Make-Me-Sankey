@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "nodes": [
+    { "name": "Example Source", "color": "#1f8a5f" },
+    { "name": "Example Target", "color": "#c0533e" }
+  ],
+  "links": [
+    { "source": "Example Source", "target": "Example Target", "value": 100 }
+  ],
+  "_instructions": "Replace this with real data. Keep node names consistent between nodes and links. Colors are optional. Use restrained semantic names for profit/cost if desired."
+}

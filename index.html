@@ -2674,63 +2674,59 @@
         // auto-migrated. Per explicit decision: old data files are simply incompatible: the
         // person re-exports from the old version's "Export data" (still on hex strings)
         // and rebuilds the file, or starts fresh.
+        function applyImportedSankeyData(data) {
+            if (data.version === 3) {
+                if (!Array.isArray(data.series) || !Array.isArray(data.flows)) throw new Error("V3 file must have 'series' and 'flows' arrays.");
+                const colorsOk = data.series.every(s => !s.color || (typeof s.color === 'object' && typeof s.color.themeIndex === 'number'));
+                if (!colorsOk) throw new Error("Series color must be a theme reference {themeIndex, variant}.");
+                seriesColumns = Array.isArray(data.columns) ? data.columns : [];
+                seriesModel   = data.series;
+                seriesFlows   = data.flows;
+                nodes = []; links = []; columnLabels = [];
+                paletteMode = 'branded';
+                renderDataPanel(); saveToLocalStorage(); generateDiagram();
+            } else if (data.version === 2) {
+                if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
+                const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
+                if (!colorRefShapeOk) throw new Error("This data file's node colors aren't in the expected theme-reference format.");
+                const overridesOk = data.nodes.every(n =>
+                    (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
+                    (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
+                    (n.displayName === undefined || typeof n.displayName === 'string')
+                );
+                if (!overridesOk) throw new Error("One or more nodes has an invalid 'value' or 'column' field.");
+                seriesColumns = null; seriesModel = null; seriesFlows = null;
+                nodeRegistry = {};
+                nodeLabels = {};
+                manualColorOverrides = {};
+                data.nodes.forEach(n => {
+                    nodeRegistry[n.name] = { color: n.color };
+                    if (n.color) manualColorOverrides[n.name] = true;
+                    if (n.displayName && n.displayName !== n.name) nodeLabels[n.name] = n.displayName;
+                });
+                links = data.links;
+                nodes = data.nodes;
+                columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
+                syncNodesFromRegistry();
+                data.nodes.forEach(src => {
+                    const dest = nodes.find(n => n.name === src.name);
+                    if (!dest) return;
+                    if (typeof src.value  === 'number') dest.value  = src.value;
+                    if (typeof src.column === 'number') dest.column = src.column;
+                });
+                renderSmartTable(); saveToLocalStorage(); generateDiagram();
+            } else {
+                throw new Error("This data file is from an older, incompatible version. Please re-create it in the current version.");
+            }
+        }
+
         document.getElementById('json-file-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(ev) {
                 try {
-                    const data = JSON.parse(ev.target.result);
-                    if (data.version === 3) {
-                        // V3 series model
-                        if (!Array.isArray(data.series) || !Array.isArray(data.flows)) throw new Error("V3 file must have 'series' and 'flows' arrays.");
-                        const colorsOk = data.series.every(s => !s.color || (typeof s.color === 'object' && typeof s.color.themeIndex === 'number'));
-                        if (!colorsOk) throw new Error("Series color must be a theme reference {themeIndex, variant}.");
-                        seriesColumns = Array.isArray(data.columns) ? data.columns : [];
-                        seriesModel   = data.series;
-                        seriesFlows   = data.flows;
-                        nodes = []; links = []; columnLabels = [];
-                        paletteMode = 'branded';
-                        renderDataPanel(); saveToLocalStorage(); generateDiagram();
-                    } else if (data.version === 2) {
-                        if (!data.nodes || !data.links) throw new Error("Missing structural arrays");
-                        const colorRefShapeOk = data.nodes.every(n => !n.color || (typeof n.color === 'object' && typeof n.color.themeIndex === 'number'));
-                        if (!colorRefShapeOk) throw new Error("This data file's node colors aren't in the expected theme-reference format.");
-                        const overridesOk = data.nodes.every(n =>
-                            (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
-                            (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
-                            (n.displayName === undefined || typeof n.displayName === 'string')
-                        );
-                        if (!overridesOk) throw new Error("One or more nodes has an invalid 'value' or 'column' field.");
-                        seriesColumns = null; seriesModel = null; seriesFlows = null;
-                        // Rebuild nodeRegistry and nodeLabels from the loaded nodes.
-                        // node.displayName is stored in nodeLabels so displayNameFor() can
-                        // resolve it. node.column and node.value stay on the node objects
-                        // themselves (passed through syncNodesFromRegistry).
-                        nodeRegistry = {};
-                        nodeLabels = {};
-                        manualColorOverrides = {};
-                        data.nodes.forEach(n => {
-                            nodeRegistry[n.name] = { color: n.color };
-                            if (n.color) manualColorOverrides[n.name] = true; // file specified it explicitly
-                            if (n.displayName && n.displayName !== n.name) nodeLabels[n.name] = n.displayName;
-                        });
-                        links = data.links;
-                        nodes = data.nodes; // keep full node objects (preserves .value, .column)
-                        columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
-                        // syncNodesFromRegistry rebuilds nodes[] from registry+labels, but we
-                        // need to preserve value/column overrides from the loaded data. Re-apply them.
-                        syncNodesFromRegistry();
-                        data.nodes.forEach(src => {
-                            const dest = nodes.find(n => n.name === src.name);
-                            if (!dest) return;
-                            if (typeof src.value  === 'number') dest.value  = src.value;
-                            if (typeof src.column === 'number') dest.column = src.column;
-                        });
-                        renderSmartTable(); saveToLocalStorage(); generateDiagram();
-                    } else {
-                        throw new Error("This data file is from an older, incompatible version. Please re-create it in the current version.");
-                    }
+                    applyImportedSankeyData(JSON.parse(ev.target.result));
                 } catch (err) { alert("Couldn't load this file: " + err.message); }
             };
             reader.readAsText(file); e.target.value = '';
@@ -2996,6 +2992,9 @@
             }
         }
 
+        window.buildExportInstructions = buildExportInstructions;
+        window.applyImportedSankeyData = applyImportedSankeyData;
+
         window.onload = function() {
             loadFromLocalStorage();
             
@@ -3032,5 +3031,6 @@
             initResizeHandling();
         };
     </script>
+    <script src="ai-panel.js"></script>
 </body>
 </html>

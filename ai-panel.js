@@ -45,18 +45,16 @@
       '    <textarea id="user-requirements" class="w-full h-24 field-input border border-[#e7e3d8] rounded-lg p-3 text-sm" placeholder="e.g. Revenue splits into Direct and Partner, then into Gross Margin and Cost of Sales."></textarea>',
       '  </div>',
       '  <div class="flex gap-2">',
-      '    <button type="button" id="generate-prompt-btn" class="btn btn-primary">2. Generate prompt and template</button>',
+      '    <button type="button" id="generate-prompt-btn" class="btn btn-primary">2. Generate prompt</button>',
       '    <button type="button" id="copy-prompt-btn" class="btn btn-ghost" disabled>Copy prompt</button>',
       '  </div>',
       '  <div id="prompt-output" class="hidden">',
-      '    <label class="block text-xs font-semibold text-[#9a9484] mb-1">Context prompt. Copy this into your AI together with the template.</label>',
-      '    <textarea id="generated-prompt" class="w-full h-40 field-input border border-[#e7e3d8] rounded-lg p-3 text-xs font-mono" readonly></textarea>',
-      '    <label class="block text-xs font-semibold text-[#9a9484] mb-1 mt-3">Data template</label>',
-      '    <textarea id="generated-template" class="w-full h-32 field-input border border-[#e7e3d8] rounded-lg p-3 text-xs font-mono" readonly></textarea>',
+      '    <label class="block text-xs font-semibold text-[#9a9484] mb-1">Prompt, including the data shape. Copy this whole block into your AI.</label>',
+      '    <textarea id="generated-prompt" class="w-full h-56 field-input border border-[#e7e3d8] rounded-lg p-3 text-xs font-mono" readonly></textarea>',
       '  </div>',
       '  <div>',
       '    <label class="block text-xs font-semibold text-[#9a9484] mb-1">3. Paste the completed JSON</label>',
-      '    <textarea id="paste-json" class="w-full h-32 field-input border border-[#e7e3d8] rounded-lg p-3 text-sm font-mono" placeholder="{ "version": 2, "nodes": [], "links": [] }"></textarea>',
+      '    <textarea id="paste-json" class="w-full h-32 field-input border border-[#e7e3d8] rounded-lg p-3 text-sm font-mono" placeholder='Paste the JSON your AI returned'></textarea>',
       '    <button type="button" id="load-pasted-btn" class="btn btn-primary mt-2">Load and render</button>',
       '  </div>',
       '</div>'
@@ -85,17 +83,16 @@
         'User requirements:',
         req,
         '',
-        'Start from this template and replace the example with the user\'s data:',
+        'Replace the example JSON below with the user\'s data. Return that JSON only:',
         tmpl
       ].join('\n');
       document.getElementById('generated-prompt').value = prompt;
-      document.getElementById('generated-template').value = tmpl;
       document.getElementById('prompt-output').classList.remove('hidden');
       document.getElementById('copy-prompt-btn').disabled = false;
     });
 
     document.getElementById('copy-prompt-btn').addEventListener('click', function () {
-      const full = document.getElementById('generated-prompt').value + '\n\n' + document.getElementById('generated-template').value;
+      const full = document.getElementById('generated-prompt').value;
       const btn = this;
       navigator.clipboard.writeText(full).then(function () {
         btn.textContent = 'Copied';

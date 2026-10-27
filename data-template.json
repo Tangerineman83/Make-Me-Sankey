@@ -1,11 +1,16 @@
 {
-  "version": 1,
+  "version": 2,
   "nodes": [
-    { "name": "Example Source", "color": "#1f8a5f" },
-    { "name": "Example Target", "color": "#c0533e" }
+    { "name": "Total", "color": { "themeIndex": 0, "variant": "base" } },
+    { "name": "Category A", "color": { "themeIndex": 1, "variant": "base" } },
+    { "name": "Category B", "color": { "themeIndex": 2, "variant": "base" } },
+    { "name": "Outcome", "color": { "themeIndex": 0, "variant": "base" } }
   ],
   "links": [
-    { "source": "Example Source", "target": "Example Target", "value": 100 }
+    { "source": "Total", "target": "Category A", "value": 60 },
+    { "source": "Total", "target": "Category B", "value": 40 },
+    { "source": "Category A", "target": "Outcome", "value": 60 },
+    { "source": "Category B", "target": "Outcome", "value": 40 }
   ],
-  "_instructions": "Replace this with real data. Keep node names consistent between nodes and links. Colors are optional. Use restrained semantic names for profit/cost if desired."
+  "columnLabels": ["Start", "Category", "End"]
 }

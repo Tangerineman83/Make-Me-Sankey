@@ -48,3 +48,5 @@ The page supplies a pre-filled template and a detailed system-style prompt for t
 - Advanced editor remains available but secondary.
 
 Open `index.html` to use. Export remains transparent SVG only.
+
+<!-- pages-trigger -->

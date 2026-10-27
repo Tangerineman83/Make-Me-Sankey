@@ -54,7 +54,7 @@
       '  </div>',
       '  <div>',
       '    <label class="block text-xs font-semibold text-[#9a9484] mb-1">3. Paste the completed JSON</label>',
-      '    <textarea id="paste-json" class="w-full h-32 field-input border border-[#e7e3d8] rounded-lg p-3 text-sm font-mono" placeholder='Paste the JSON your AI returned'></textarea>',
+      '    <textarea id="paste-json" class="w-full h-32 field-input border border-[#e7e3d8] rounded-lg p-3 text-sm font-mono" placeholder="Paste the JSON your AI returned"></textarea>',
       '    <button type="button" id="load-pasted-btn" class="btn btn-primary mt-2">Load and render</button>',
       '  </div>',
       '</div>'

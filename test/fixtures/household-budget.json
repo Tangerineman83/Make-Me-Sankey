@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "nodes": [
+    { "name": "Salary", "color": { "themeIndex": 0, "variant": "base" } },
+    { "name": "Side income", "color": { "themeIndex": 1, "variant": "base" } },
+    { "name": "Household income", "color": { "themeIndex": 4, "variant": "base" } },
+    { "name": "Rent", "color": { "themeIndex": 2, "variant": "base" } },
+    { "name": "Groceries", "color": { "themeIndex": 6, "variant": "tint2" } },
+    { "name": "Savings", "color": { "themeIndex": 3, "variant": "base" } },
+    { "name": "Taxes", "color": { "themeIndex": 2, "variant": "shade0" } }
+  ],
+  "links": [
+    { "source": "Salary", "target": "Household income", "value": 3200 },
+    { "source": "Side income", "target": "Household income", "value": 450 },
+    { "source": "Household income", "target": "Rent", "value": 1400 },
+    { "source": "Household income", "target": "Groceries", "value": 520 },
+    { "source": "Household income", "target": "Savings", "value": 830 },
+    { "source": "Household income", "target": "Taxes", "value": 900 }
+  ],
+  "columnLabels": ["Income", "Pooled", "Spending"]
+}

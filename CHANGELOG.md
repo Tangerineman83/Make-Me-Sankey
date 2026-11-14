@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — node.order, plot height, route colours, word gap (14 Nov 2026)
+
+- Optional node field `order`: when every node in a column has a numeric order, the column is laid out top-to-bottom by that value (low = top). Partially ordered columns keep the default value-desc sort.
+- `--plot-height <px>` (pro only, default 400) sets the plot's usable height.
+- `--route-color Name:#HEX` (repeatable, opt-in) recolours each ribbon by its route end: the target if that name is listed, otherwise the source. Same rule as the job-local SVG post-process. Default output is unchanged without the flag.
+- `--word-gap <em>` (opt-in) uses at least that spacing between words in labels, title and caption, and writes a matching SVG `word-spacing`. 0.40em is the recommended floor. Default output is unchanged.
+- Tests sit in `test/layout-options.test.mjs`. AI-written by in-house executor.
+
+
+
 ## Unreleased — pro style preset and house palette (local branch, 14 Nov 2026)
 
 - Opt-in `--style pro`: solid ribbons, crisp thin node bars, system-sans type, collision-avoided labels, content-fitted canvas height. Optional `--title` and `--caption` reserve space only when given.

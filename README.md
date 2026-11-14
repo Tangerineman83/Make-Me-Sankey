@@ -41,6 +41,22 @@ Full historical design notes, V1–V3 evolution, research, and constraints are p
 
 The page supplies a pre-filled template and a detailed system-style prompt for the AI covering hue economy, label constraints, and the exact schema. See also `data-template.json`.
 
+## Command-line renderer (headless SVG)
+
+The renderer now lives in `sankey-render.js`, shared by the page and a Node CLI, so a data file can become an SVG without opening a browser:
+
+```bash
+node scripts/render-sankey.mjs data-template.json sankey.svg          # or "-" for stdout
+node scripts/render-sankey.mjs my-data.json out.svg --palette restrained --aspect 4:3
+npm test                                                              # node --test, no dependencies
+```
+
+- **Input:** the version-2 schema in `data-template.json`: `{ version: 2, nodes: [{ name, color: { themeIndex, variant } }], links: [{ source, target, value }], columnLabels: [string] }`. Optional node fields `displayName`, `value`, `column` work as in the page. Source/target must match node names exactly.
+- **Output:** the same SVG as the page's "Export SVG" (transparent, colours resolved, styles inlined), byte-identical for the same input and options. Needs Node 18+; no npm packages, no network.
+- **Options:** `--palette branded|restrained` (default branded), `--style standard|classic|modern`, `--aspect 16:9|4:3|portrait`, `--width <px>` (default 900), `--opacity <0..1>`, `--names-only`, `--expand`, `--background`. Run with `--help`.
+- **Text widths:** the CLI measures labels with an embedded Inter width table (no kerning) instead of a browser canvas, so label-driven margins can differ from an on-screen render by a pixel or so.
+- **Out of scope:** version-3 (series) files, PNG/PDF export, custom theme palettes, the AI copy-paste panel.
+
 ## Efficiency notes
 
 - Historical narrative trimmed from the live README for readability (core decisions remain encoded in code and comments).

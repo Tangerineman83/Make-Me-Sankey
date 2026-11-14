@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "nodes": [
+    { "name": "Employer & Employee", "color": { "themeIndex": 0, "variant": "base" } },
+    { "name": "Tax relief", "color": { "themeIndex": 1, "variant": "tint3" } },
+    { "name": "Pot@1", "displayName": "Pension pot", "color": { "themeIndex": 4, "variant": "base" } },
+    { "name": "Pot@2", "displayName": "Pension pot", "color": { "themeIndex": 4, "variant": "base" } },
+    { "name": "Fees \"admin\"", "color": { "themeIndex": 2, "variant": "base" } },
+    { "name": "Annuity", "color": { "themeIndex": 5, "variant": "base" }, "column": 3 },
+    { "name": "Drawdown", "color": { "themeIndex": 6, "variant": "base" } },
+    { "name": "Tax-free cash" },
+    { "name": "Retirement income", "color": { "themeIndex": 0, "variant": "base" } },
+    { "name": "Unused node", "color": { "themeIndex": 7, "variant": "base" } }
+  ],
+  "links": [
+    { "source": "Employer & Employee", "target": "Pot@1", "value": 12500 },
+    { "source": "Tax relief", "target": "Pot@1", "value": 2500 },
+    { "source": "Pot@1", "target": "Pot@2", "value": 15000 },
+    { "source": "Pot@2", "target": "Annuity", "value": 6000 },
+    { "source": "Pot@2", "target": "Drawdown", "value": 5249.6 },
+    { "source": "Pot@2", "target": "Fees \"admin\"", "value": 0.4 },
+    { "source": "Employer & Employee", "target": "Tax-free cash", "value": 3750 },
+    { "source": "Annuity", "target": "Retirement income", "value": 6000 },
+    { "source": "Drawdown", "target": "Retirement income", "value": 5249.6 },
+    { "source": "Tax-free cash", "target": "Retirement income", "value": 3750 }
+  ],
+  "columnLabels": ["Contributions", "Accumulate", "", "Decumulate", "Income"]
+}

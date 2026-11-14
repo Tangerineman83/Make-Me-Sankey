@@ -327,7 +327,25 @@
             const showPassThrough = !!state.showPassThrough;
             const globalOpacityValue = state.globalOpacityValue !== undefined ? state.globalOpacityValue : 0.45;
             const themePalette = state.themePalette || (paletteMode === 'house' ? HOUSE_THEME_PALETTE : DEFAULT_THEME_PALETTE);
-            const measureTextWidth = env.measureTextWidth || (isPro ? createSelawikMeasurer() : createInterMeasurer());
+            const rawMeasureTextWidth = env.measureTextWidth || (isPro ? createSelawikMeasurer() : createInterMeasurer());
+            // Opt-in minimum word gap (em). Selawik's native space is ~0.27em and can
+            // collapse at small sizes; 0.40em is the job-tested floor. Off by default.
+            const wordGapEm = (typeof state.wordGapEm === 'number' && Number.isFinite(state.wordGapEm) && state.wordGapEm > 0) ? state.wordGapEm : 0;
+            function wordGapExtraPx(font) {
+                if (!wordGapEm) return 0;
+                const m = /(\d+(?:\.\d+)?)px/.exec(font || '');
+                const size = m ? parseFloat(m[1]) : (isPro ? 13 : 12.5);
+                const native = rawMeasureTextWidth(' ', font);
+                return Math.max(0, wordGapEm * size - native);
+            }
+            function wordSpacingAttr(font) {
+                const extra = wordGapExtraPx(font);
+                return extra > 0 ? ` word-spacing="${+extra.toFixed(3)}"` : '';
+            }
+            const measureTextWidth = !wordGapEm ? rawMeasureTextWidth : function measureWithWordGap(text, font) {
+                const spaces = (String(text).match(/ /g) || []).length;
+                return rawMeasureTextWidth(text, font) + spaces * wordGapExtraPx(font);
+            };
             const locale = env.locale;
 
             const formatFlowValue = (v) => formatFlowValueL(v, locale);
@@ -462,7 +480,8 @@
             const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth, isPro ? 0 : minWForH);
 
             // ── H: existing styles lock to the aspect ratio; pro fits the content tightly ─
-            const usableH = isPro ? Math.max(minUsableH, 400) : (Math.round(W * aspectRatio) - topPad - bottomPad);
+            const plotHeight = (typeof state.plotHeight === 'number' && Number.isFinite(state.plotHeight)) ? state.plotHeight : null;
+            const usableH = isPro ? Math.max(minUsableH, plotHeight || 400) : (Math.round(W * aspectRatio) - topPad - bottomPad);
             const H = isPro ? (topPad + usableH + bottomPad) : Math.round(W * aspectRatio);
 
             // ── wrappedLabel: now W is final, compute actual wrap budget per column ───
@@ -530,25 +549,35 @@
                     if (r !== undefined) origColBuckets[r].push({
                         name: n.name,
                         color: (fullNodeIndex[n.name] !== undefined && fullNodes[fullNodeIndex[n.name]] && fullNodes[fullNodeIndex[n.name]].color) || '#94a3b8',
-                        value: fullValueMap[n.name] || 0
+                        value: fullValueMap[n.name] || 0,
+                        order: fullNodes[fullNodeIndex[n.name]] && fullNodes[fullNodeIndex[n.name]].order
                     });
                 });
                 // Layout each original column the same way the real layout does,
                 // so y0/y1 coordinates are directly comparable.
                 const posMap = {};
                 origColBuckets.forEach(col => {
-                    const sorted = [...col].sort((a, b) => b.value - a.value);
+                    const sorted = sortColumnNodes(col);
                     const laid = layoutColumn(sorted, usableH, topPad, gapFor(sorted.length), globalTotal);
                     laid.forEach(seg => { posMap[seg.name] = seg; });
                 });
                 return posMap;
             })();
 
+            function sortColumnNodes(col) {
+                // Optional node.order: when every node in the column has a numeric
+                // order, use it (low = top). Otherwise keep the default value-desc sort.
+                const allOrdered = col.every(n => typeof n.order === 'number');
+                if (allOrdered) return [...col].sort((a, b) => a.order - b.order);
+                return [...col].sort((a, b) => b.value - a.value);
+            }
+
             const laidOut = colNodeNames.map(names => {
                 const colNodes = names.map(name => ({
                     name,
                     color: (renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].color) || '#94a3b8',
-                    value: nodeValue(name)
+                    value: nodeValue(name),
+                    order: renderNodes[nodeIndex[name]] && renderNodes[nodeIndex[name]].order
                 }));
 
                 // If every node in this column has a position from the expanded layout,
@@ -559,8 +588,7 @@
                     return colNodes.map(n => ({ ...n, ...expandedColLayout[n.name] }));
                 }
 
-                // Standard pack: sort by value desc, layout normally.
-                const sorted = [...colNodes].sort((a, b) => b.value - a.value);
+                const sorted = sortColumnNodes(colNodes);
                 return layoutColumn(sorted, usableH, topPad, gapFor(sorted.length), globalTotal);
             });
             const byKeyPerCol = laidOut.map(col => new Map(col.map(n => [n.name, n])));
@@ -576,6 +604,12 @@
             const linksByRank = [...validLinks].sort((a, b) => {
                 const ra = rank[a.source], rb = rank[b.source];
                 if (ra !== rb) return ra - rb;
+                const sa = renderNodes[nodeIndex[a.source]] && renderNodes[nodeIndex[a.source]].order;
+                const sb = renderNodes[nodeIndex[b.source]] && renderNodes[nodeIndex[b.source]].order;
+                if (typeof sa === 'number' && typeof sb === 'number' && sa !== sb) return sa - sb;
+                const ta = renderNodes[nodeIndex[a.target]] && renderNodes[nodeIndex[a.target]].order;
+                const tb = renderNodes[nodeIndex[b.target]] && renderNodes[nodeIndex[b.target]].order;
+                if (typeof ta === 'number' && typeof tb === 'number' && ta !== tb) return ta - tb;
                 return b.value - a.value;
             });
 
@@ -765,11 +799,11 @@
                     svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
                     svg += `<line x1="${edgeX}" y1="${midY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
                     lines.forEach(line => {
-                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}"${wordSpacingAttr(labelFontStr)}>${escapeHtml(line)}</text>`;
                         lineY += lineHeight;
                     });
                     if (showVal) {
-                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                        svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}"${wordSpacingAttr(valueFontFor(labelFontStr))}>${formatFlowValue(n.value)}</text>`;
                     }
                     svg += `</g>`;
                 });
@@ -842,10 +876,10 @@
                             svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
                             svg += `<line x1="${edgeX}" y1="${nodeMidY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
                             it.lines.forEach(line => {
-                                svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                                svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}"${wordSpacingAttr(labelFontStr)}>${escapeHtml(line)}</text>`;
                                 lineY += lineHeight;
                             });
-                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}"${wordSpacingAttr(valueFontStr)}>${formatFlowValue(n.value)}</text>`;
                             svg += `</g>`;
                         });
                         return;
@@ -892,16 +926,16 @@
                         svg += `<rect class="sk-label-pill" x="${pillX.toFixed(1)}" y="${pillY.toFixed(1)}" width="${pillW.toFixed(1)}" height="${pillH.toFixed(1)}" rx="${pillRx}" fill="var(--sk-canvas)"/>`;
                         let lineY = pillY + pillPadY + lineHeight * 0.78;
                         if (it.layout.valueOnSameLine) {
-                            svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(it.layout.lines[0])}</text>`;
+                            svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}"${wordSpacingAttr(labelFontStr)}>${escapeHtml(it.layout.lines[0])}</text>`;
                             const valX = textLeft + it.layout.nameW + inlineGap;
-                            svg += `<text x="${valX.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${escapeHtml(it.layout.valueStr)}</text>`;
+                            svg += `<text x="${valX.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}"${wordSpacingAttr(valueFontStr)}>${escapeHtml(it.layout.valueStr)}</text>`;
                         } else {
                             it.layout.lines.forEach(line => {
-                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}"${wordSpacingAttr(labelFontStr)}>${escapeHtml(line)}</text>`;
                                 lineY += lineHeight;
                             });
                             if (it.showVal && it.layout.valueStr) {
-                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${escapeHtml(it.layout.valueStr)}</text>`;
+                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}"${wordSpacingAttr(valueFontStr)}>${escapeHtml(it.layout.valueStr)}</text>`;
                             }
                         }
                         svg += `</g>`;
@@ -932,7 +966,7 @@
                         }
                         displayLabel += '\u2026';
                     }
-                    svg += `<text x="${colX[c].toFixed(1)}" y="${colLabelY.toFixed(1)}" text-anchor="middle" class="sk-col-label" font-size="${colLabelFontSize}">${escapeHtml(displayLabel)}</text>`;
+                    svg += `<text x="${colX[c].toFixed(1)}" y="${colLabelY.toFixed(1)}" text-anchor="middle" class="sk-col-label" font-size="${colLabelFontSize}"${wordSpacingAttr(colLabelFont)}>${escapeHtml(displayLabel)}</text>`;
                 }
             }
             if (isPro && titleText) {
@@ -947,7 +981,7 @@
                     }
                     displayTitle += '\u2026';
                 }
-                svg += `<text x="${edgePad}" y="${titleY.toFixed(1)}" class="sk-title" font-size="${titleFontSize}">${escapeHtml(displayTitle)}</text>`;
+                svg += `<text x="${edgePad}" y="${titleY.toFixed(1)}" class="sk-title" font-size="${titleFontSize}"${wordSpacingAttr(titleFont)}>${escapeHtml(displayTitle)}</text>`;
             }
             if (isPro && captionText) {
                 const capFontSize = 12.5;
@@ -961,7 +995,7 @@
                     }
                     displayCap += '\u2026';
                 }
-                svg += `<text x="${edgePad}" y="${capY.toFixed(1)}" class="sk-caption" font-size="${capFontSize}">${escapeHtml(displayCap)}</text>`;
+                svg += `<text x="${edgePad}" y="${capY.toFixed(1)}" class="sk-caption" font-size="${capFontSize}"${wordSpacingAttr(capFont)}>${escapeHtml(displayCap)}</text>`;
             }
             return { status: 'ok', W, H, body: svg, ribbons, validLinks, numCols };
         }
@@ -1156,9 +1190,10 @@
             const overridesOk = data.nodes.every(n =>
                 (n.value === undefined || (typeof n.value === 'number' && n.value >= 0)) &&
                 (n.column === undefined || (typeof n.column === 'number' && Number.isInteger(n.column) && n.column >= 0)) &&
+                (n.order === undefined || (typeof n.order === 'number' && Number.isFinite(n.order))) &&
                 (n.displayName === undefined || typeof n.displayName === 'string')
             );
-            if (!overridesOk) throw new Error("One or more nodes has an invalid 'value' or 'column' field.");
+            if (!overridesOk) throw new Error("One or more nodes has an invalid 'value', 'column' or 'order' field.");
             if (data.columnLabels !== undefined && (!Array.isArray(data.columnLabels) || !data.columnLabels.every(l => l === null || typeof l === 'string')))
                 throw new Error("'columnLabels' must be an array of strings.");
             const registry = {}, labels = {};
@@ -1181,16 +1216,35 @@
                 if (!dest) return;
                 if (typeof src.value === 'number') dest.value = src.value;
                 if (typeof src.column === 'number') dest.column = src.column;
+                if (typeof src.order === 'number') dest.order = src.order;
             });
             const columnLabels = Array.isArray(data.columnLabels) ? data.columnLabels : [];
             return { nodes, links, columnLabels };
+        }
+
+        // Recolour each .sk-ribbon path by its route end. If the target name is in
+        // colorMap, use that colour; otherwise the source; otherwise leave the fill.
+        // Same rule as the job-local post-process; opt-in, default output unchanged.
+        function recolorRibbonsByRoute(svg, colorMap) {
+            if (!colorMap || typeof colorMap !== 'object') return svg;
+            const names = Object.keys(colorMap);
+            if (!names.length) return svg;
+            return String(svg).replace(/<path\b[^>]*class="sk-ribbon"[^>]*>/g, (tag) => {
+                const srcM = tag.match(/data-source="([^"]*)"/);
+                const tgtM = tag.match(/data-target="([^"]*)"/);
+                if (!srcM || !tgtM) return tag;
+                const color = colorMap[tgtM[1]] || colorMap[srcM[1]];
+                if (!color) return tag;
+                if (/\bfill="/.test(tag)) return tag.replace(/\bfill="[^"]*"/, `fill="${color}"`);
+                return tag.replace(/\s*\/?>$/, (end) => ` fill="${color}"${end}`);
+            });
         }
 
         // Standalone SVG, equivalent to the page's "Export SVG" (transparent background,
         // var(--sk-*) tokens resolved, stylesheet inlined, <desc> summary). Pure string build.
         // options: paletteMode, ribbonStyle, diagramAspect, showValues, showPassThrough,
         // globalOpacityValue, themePalette, width (container width), background (bool),
-        // measureTextWidth, locale.
+        // measureTextWidth, locale, plotHeight, wordGapEm, routeColors.
         function renderStandaloneSvg(data, options) {
             options = options || {};
             const norm = normalizeV2(data);
@@ -1203,6 +1257,8 @@
                 themePalette: options.themePalette || (options.paletteMode === 'house' ? HOUSE_THEME_PALETTE : undefined),
                 title: options.title, caption: options.caption,
                 ribbonColorMode: options.ribbonColorMode,
+                plotHeight: options.plotHeight,
+                wordGapEm: options.wordGapEm,
             }, { measureTextWidth: options.measureTextWidth || (options.ribbonStyle === 'pro' ? createSelawikMeasurer() : createInterMeasurer()), containerW: options.width || 900, locale });
             if (res.status === 'empty') throw new Error('Nothing to render: the file has no nodes or no links.');
             if (res.status === 'no-valid-flows') throw new Error('No valid flows to render: every link must join two named nodes with a value above 0.');
@@ -1219,8 +1275,10 @@
             const desc = escapeHtml(accessibleSummaryText(res.validLinks, locale));
             const sizeAttrs = isPro ? ` width="${res.W}" height="${res.H}"` : '';
             const styleAttr = isPro ? ' style="display:block;"' : ' style="width:100%; height:auto; display:block;"';
-            return `<svg xmlns="http://www.w3.org/2000/svg" id="sankey-svg"${sizeAttrs} viewBox="0 0 ${res.W} ${res.H}"${styleAttr} role="img" aria-labelledby="sankey-a11y-summary">`
+            let out = `<svg xmlns="http://www.w3.org/2000/svg" id="sankey-svg"${sizeAttrs} viewBox="0 0 ${res.W} ${res.H}"${styleAttr} role="img" aria-labelledby="sankey-a11y-summary">`
                 + `<style>${exportCss}</style><desc id="sankey-a11y-summary">${desc}</desc>${body}</svg>\n`;
+            if (options.routeColors) out = recolorRibbonsByRoute(out, options.routeColors);
+            return out;
         }
 
         return {
@@ -1232,6 +1290,6 @@
             SK_TOKEN_VALUES, resolveTokens, EXPORT_STYLE_CSS,
             PRO_TOKEN_VALUES, resolveProTokens, PRO_EXPORT_STYLE_CSS, PRO_FONT_STACK,
             createInterMeasurer, createSelawikMeasurer, spreadLabelMids, pickProRibbonFill, isDarkRibbonFill,
-            normalizeV2, renderStandaloneSvg,
+            normalizeV2, renderStandaloneSvg, recolorRibbonsByRoute,
         };
 });

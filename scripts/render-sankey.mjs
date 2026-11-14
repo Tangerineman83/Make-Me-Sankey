@@ -23,6 +23,11 @@ Options (defaults match the web app after it first opens):
                                   layout: solid ribbons, tight canvas, system sans)
   --aspect 16:9|4:3|portrait      diagram aspect ratio (default: 16:9; ignored for height in pro)
   --width <px>                    layout width before labels widen it (default: 900)
+  --plot-height <px>              pro only: set the plot's usable height (default: 400)
+  --route-color Name:#HEX         recolour ribbons by route end (target, else source);
+                                  repeatable. Default output is unchanged without this flag
+  --word-gap <em>                 minimum space between words in labels, title and caption
+                                  (0.40 is the recommended floor). Off by default
   --opacity <0..1>                ribbon opacity (default: 0.45; 0.42 when --style pro)
   --names-only                    hide values on middle-column labels (edge columns keep them)
   --expand                        show pass-through nodes instead of collapsing them
@@ -37,7 +42,8 @@ function fail(msg, code) { process.stderr.write(`render-sankey: ${msg}\n`); proc
 function parseArgs(argv) {
     const opts = { paletteMode: 'branded', ribbonStyle: 'standard', diagramAspect: '16:9', width: 900,
         globalOpacityValue: 0.45, showValues: true, showPassThrough: false, background: false,
-        title: undefined, caption: undefined, ribbonColorMode: undefined };
+        title: undefined, caption: undefined, ribbonColorMode: undefined, plotHeight: undefined,
+        routeColors: undefined, wordGapEm: undefined };
     const pos = [];
     let opacitySet = false;
     const choice = (name, v, allowed) => { if (!allowed.includes(v)) fail(`${name} must be one of ${allowed.join(', ')}`, 2); return v; };
@@ -50,6 +56,23 @@ function parseArgs(argv) {
             case '--style': opts.ribbonStyle = choice(a, next(), ['standard', 'classic', 'modern', 'pro']); break;
             case '--aspect': opts.diagramAspect = choice(a, next(), ['16:9', '4:3', 'portrait']); break;
             case '--width': { const w = Number(next()); if (!Number.isFinite(w) || w < 100 || w > 10000) fail('--width must be a number from 100 to 10000', 2); opts.width = w; break; }
+            case '--plot-height': { const h = Number(next()); if (!Number.isFinite(h) || h < 100 || h > 10000) fail('--plot-height must be a number from 100 to 10000', 2); opts.plotHeight = h; break; }
+            case '--route-color': {
+                const v = next();
+                const m = /^(.+):(#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}))$/.exec(v);
+                if (!m || !m[1].trim()) fail('--route-color must be Name:#RGB or Name:#RRGGBB', 2);
+                let hex = m[2].toUpperCase();
+                if (hex.length === 4) hex = '#' + hex.slice(1).split('').map(c => c + c).join('');
+                if (!opts.routeColors) opts.routeColors = {};
+                opts.routeColors[m[1]] = hex;
+                break;
+            }
+            case '--word-gap': {
+                const g = Number(next());
+                if (!Number.isFinite(g) || g <= 0 || g > 2) fail('--word-gap must be an em value above 0 and at most 2 (0.40 is the recommended minimum)', 2);
+                opts.wordGapEm = g;
+                break;
+            }
             case '--opacity': { const o = Number(next()); if (!Number.isFinite(o) || o < 0 || o > 1) fail('--opacity must be from 0 to 1', 2); opts.globalOpacityValue = o; opacitySet = true; break; }
             case '--names-only': opts.showValues = false; break;
             case '--expand': opts.showPassThrough = true; break;
@@ -64,6 +87,7 @@ function parseArgs(argv) {
     }
     if (pos.length !== 2) fail(`expected <input.json> and <output.svg>\n\n${USAGE}`, 2);
     if (opts.ribbonColorMode && opts.ribbonStyle !== 'pro') fail('--ribbon is only valid with --style pro', 2);
+    if (opts.plotHeight && opts.ribbonStyle !== 'pro') fail('--plot-height is only valid with --style pro', 2);
     if (opts.ribbonStyle === 'pro' && !opacitySet) opts.globalOpacityValue = 0.42;
     if (opts.ribbonStyle === 'pro' && !opts.ribbonColorMode) opts.ribbonColorMode = 'auto';
     return { input: pos[0], output: pos[1], opts };

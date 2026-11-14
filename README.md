@@ -53,9 +53,10 @@ npm test                                                              # node --t
 
 - **Input:** the version-2 schema in `data-template.json`: `{ version: 2, nodes: [{ name, color: { themeIndex, variant } }], links: [{ source, target, value }], columnLabels: [string] }`. Optional node fields `displayName`, `value`, `column` work as in the page. Source/target must match node names exactly.
 - **Output:** the same SVG as the page's "Export SVG" (transparent, colours resolved, styles inlined), byte-identical for the same input and options. Needs Node 18+; no npm packages, no network.
-- **Options:** `--palette branded|restrained` (default branded), `--style standard|classic|modern`, `--aspect 16:9|4:3|portrait`, `--width <px>` (default 900), `--opacity <0..1>`, `--names-only`, `--expand`, `--background`. Run with `--help`.
-- **Text widths:** the CLI measures labels with an embedded Inter width table (no kerning) instead of a browser canvas, so label-driven margins can differ from an on-screen render by a pixel or so.
-- **Out of scope:** version-3 (series) files, PNG/PDF export, custom theme palettes, the AI copy-paste panel.
+- **Options:** `--palette branded|restrained|house` (default branded; house is the colourblind-safe studio palette with one tangerine highlight), `--style standard|classic|modern|pro`, `--aspect 16:9|4:3|portrait`, `--width <px>` (default 900), `--opacity <0..1>`, `--names-only`, `--expand`, `--background`, `--title <text>`, `--caption <text>`, `--ribbon source|target|auto` (pro only, default auto). Run with `--help`.
+- **Pro preset:** `--style pro` is opt-in. Ribbons are a solid fill (no cross-hue gradient). `--ribbon auto` (the default) colours a link by its target when it flows into the last column, or when it leaves a pooling/intermediate node, and by its source otherwise; ink and dark slate are avoided. Intermediate labels sit in a solid canvas-coloured pill. Tight content-fitted canvas, system-sans type (Segoe UI / Selawik / Helvetica / Arial), clearer name/value hierarchy, and title or caption space only when those flags are passed. Existing styles stay unchanged.
+- **Text widths:** the CLI measures labels with an embedded Inter width table (no kerning) instead of a browser canvas, so label-driven margins can differ from an on-screen render by a pixel or so. `--style pro` uses an embedded Selawik table instead.
+- **Out of scope:** version-3 (series) files, PNG/PDF export, arbitrary custom palettes, the AI copy-paste panel.
 
 ## Efficiency notes
 

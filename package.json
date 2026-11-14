@@ -1,0 +1,11 @@
+{
+  "name": "make-me-sankey",
+  "private": true,
+  "description": "Make Me Sankey: single-file web app plus a headless SVG CLI sharing one renderer.",
+  "bin": { "render-sankey": "scripts/render-sankey.mjs" },
+  "scripts": {
+    "render": "node scripts/render-sankey.mjs",
+    "test": "node --test test/render-sankey.test.mjs test/review-independent.test.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

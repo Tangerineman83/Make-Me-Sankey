@@ -5,7 +5,7 @@
   "bin": { "render-sankey": "scripts/render-sankey.mjs" },
   "scripts": {
     "render": "node scripts/render-sankey.mjs",
-    "test": "node --test test/render-sankey.test.mjs test/review-independent.test.mjs"
+    "test": "node --test test/render-sankey.test.mjs test/review-independent.test.mjs test/style-pro.test.mjs"
   },
   "engines": { "node": ">=18" }
 }

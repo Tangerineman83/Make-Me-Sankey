@@ -24,6 +24,9 @@
 
         // ---- Theme colour helpers (moved from index.html; behaviour unchanged) ----
         const DEFAULT_THEME_PALETTE = ['#1c2127', '#7c8694', '#c0533e', '#1f8a5f', '#2563eb', '#7c3aed', '#d97706', '#0891b2'];
+        // House palette: colourblind-safe, one highlight (tangerine). 8 themeIndex slots.
+        // 0 tangerine, 1 blue, 2 slate, 3 teal, 4 ink, 5 plum, 6 grey-blue, 7 neutral.
+        const HOUSE_THEME_PALETTE = ['#FF6601', '#1F78B4', '#44546A', '#2A7A6B', '#1F2933', '#6B4C8A', '#8DA0B3', '#A7B1BC'];
         const THEME_TINT_PERCENTS = [0.80, 0.60, 0.40, 0.25, 0.10]; // "tint4".."tint0", lightest to least-light
         const THEME_SHADE_PERCENTS = [0.25, 0.50]; // "shade0".."shade1", least-dark to darkest
 
@@ -282,7 +285,7 @@
         }
 
         function resolveNodeColor(name, explicitColorRef, paletteMode, themePalette) {
-            if (paletteMode === 'branded') return explicitColorRef ? resolveThemeColor(explicitColorRef, themePalette) : 'var(--sk-neutral-node)';
+            if (paletteMode === 'branded' || paletteMode === 'house') return explicitColorRef ? resolveThemeColor(explicitColorRef, themePalette) : 'var(--sk-neutral-node)';
             const role = semanticRole(name);
             if (role === 'profit') return 'var(--sk-accent-profit)';
             if (role === 'cost') return 'var(--sk-accent-cost)';
@@ -290,7 +293,7 @@
         }
 
         function resolveRibbonColor(targetName, targetExplicitColorRef, paletteMode, themePalette) {
-            if (paletteMode === 'branded') return targetExplicitColorRef ? resolveThemeColor(targetExplicitColorRef, themePalette) : 'var(--sk-neutral-ribbon)';
+            if (paletteMode === 'branded' || paletteMode === 'house') return targetExplicitColorRef ? resolveThemeColor(targetExplicitColorRef, themePalette) : 'var(--sk-neutral-ribbon)';
             const role = semanticRole(targetName);
             if (role === 'profit') return 'var(--sk-accent-profit)';
             if (role === 'cost') return 'var(--sk-accent-cost)';
@@ -315,12 +318,16 @@
             const columnLabels = state.columnLabels || [];
             const paletteMode = state.paletteMode || 'restrained';
             const ribbonStyle = state.ribbonStyle || 'standard';
+            const isPro = ribbonStyle === 'pro';
+            const ribbonColorMode = (state.ribbonColorMode === 'source' || state.ribbonColorMode === 'target') ? state.ribbonColorMode : 'auto';
+            const titleText = (state.title && String(state.title).trim()) || '';
+            const captionText = (state.caption && String(state.caption).trim()) || '';
             const diagramAspect = state.diagramAspect || '16:9';
             const showValues = state.showValues !== undefined ? state.showValues : true;
             const showPassThrough = !!state.showPassThrough;
             const globalOpacityValue = state.globalOpacityValue !== undefined ? state.globalOpacityValue : 0.45;
-            const themePalette = state.themePalette || DEFAULT_THEME_PALETTE;
-            const measureTextWidth = env.measureTextWidth || createInterMeasurer();
+            const themePalette = state.themePalette || (paletteMode === 'house' ? HOUSE_THEME_PALETTE : DEFAULT_THEME_PALETTE);
+            const measureTextWidth = env.measureTextWidth || (isPro ? createSelawikMeasurer() : createInterMeasurer());
             const locale = env.locale;
 
             const formatFlowValue = (v) => formatFlowValueL(v, locale);
@@ -380,17 +387,20 @@
 
             function valueFontFor(f) {
                 const m = f.match(/(\d+(?:\.\d+)?)px/);
+                if (isPro) return `400 ${m ? parseFloat(m[1]) : 12.5}px "Segoe UI", Selawik, Helvetica, Arial, sans-serif`;
                 return `700 ${m ? parseFloat(m[1]) - 1 : 11.5}px Inter, system-ui, sans-serif`;
             }
 
-            const baseLabelSize = 12.5;
+            const baseLabelSize = isPro ? 13 : 12.5;
             const labelFontSize = baseLabelSize;
-            const valueFontSize = labelFontSize - 1;
-            const labelFontStr  = `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
-            const lineHeight    = labelFontSize * 1.05;
+            const valueFontSize = isPro ? 12.5 : (labelFontSize - 1);
+            const fontStack = isPro ? '"Segoe UI", Selawik, Helvetica, Arial, sans-serif' : 'Inter, system-ui, sans-serif';
+            const labelFontStr  = isPro ? `600 ${labelFontSize}px ${fontStack}` : `600 ${labelFontSize}px Inter, system-ui, sans-serif`;
+            const lineHeight    = isPro ? labelFontSize * 1.2 : labelFontSize * 1.05;
+            const valueLineH    = isPro ? valueFontSize * 1.2 : lineHeight;
             // Label block height for one node: name line(s) + value line + inter-node gap.
             // We don't know wrap yet, so use 1 name line as the floor; wrapping only increases it.
-            const labelBlockH   = lineHeight * 2 + 4; // name + value + 4px gap between nodes
+            const labelBlockH   = isPro ? (lineHeight + valueLineH + 8) : (lineHeight * 2 + 4); // name + value + gap between nodes
 
             function wrapToFit(name, maxW) {
                 if (measureTextWidth(name, labelFontStr) <= maxW) return [name];
@@ -418,9 +428,10 @@
             const colLabelW = colNodeNames.map(names => Math.max(0, ...names.map(rawLabelW)));
 
             // ── Horizontal: margins + minimum plot width ──────────────────────────────
-            const leaderPad = 22; // leader(10) + text-gap(6) + node-edge(6)
-            const leftMargin  = Math.ceil(colLabelW[0] + leaderPad);
-            const rightMargin = Math.ceil(colLabelW[numCols - 1] + leaderPad);
+            const leaderPad = isPro ? 26 : 22; // leader + text-gap + node-edge (+ a little extra in pro)
+            const edgePad = isPro ? 16 : 0;
+            const leftMargin  = Math.ceil(colLabelW[0] + leaderPad) + edgePad;
+            const rightMargin = Math.ceil(colLabelW[numCols - 1] + leaderPad) + edgePad;
 
             // Each middle column needs colLabelW[c] + leaderPad on each side of itself.
             // Inter-column gap must be ≥ (left neighbour half-req + right neighbour half-req).
@@ -429,14 +440,16 @@
                 ? Math.max(...colNodeNames.slice(1, numCols - 1).map(
                     names => Math.max(0, ...names.map(rawLabelW))))
                 : 0;
-            const minInterColGap  = Math.max(80, maxMidLabelW + leaderPad * 2);
+            const minInterColGap  = Math.max(isPro ? 96 : 80, maxMidLabelW + leaderPad * 2);
             const minPlotWidth    = Math.max(160, Math.ceil(minInterColGap * Math.max(numCols - 1, 1)));
 
             // ── Vertical: minimum H so every column's labels fit without overlap ──────
             const hasColLabels = columnLabels.some(l => l && l.trim());
             const hasMiddleCols = numCols > 2;
-            const topPad    = hasColLabels ? 42 : (hasMiddleCols ? 28 : 18);
-            const bottomPad = 18;
+            const titleH = (isPro && titleText) ? 36 : 0;
+            const captionH = (isPro && captionText) ? 32 : 0;
+            const topPad    = titleH + (hasColLabels ? (isPro ? 36 : 42) : (hasMiddleCols ? (isPro ? 24 : 28) : (isPro ? 16 : 18)));
+            const bottomPad = (isPro ? 16 : 18) + captionH;
             // For each column, minUsableH = nodeCount × labelBlockH (labels never overlap).
             const minUsableH = Math.max(...colNodeNames.map(names => names.length * labelBlockH));
             const minH = minUsableH + topPad + bottomPad;
@@ -446,11 +459,11 @@
                                : diagramAspect === 'portrait' ? 4/3
                                : 9/16; // 16:9
             const minWForH = Math.ceil(minH / aspectRatio);
-            const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth, minWForH);
+            const W = Math.max(containerW, leftMargin + rightMargin + minPlotWidth, isPro ? 0 : minWForH);
 
-            // ── H from W via aspect ratio ─────────────────────────────────────────────
-            const H = Math.round(W * aspectRatio);
-            const usableH = H - topPad - bottomPad;
+            // ── H: existing styles lock to the aspect ratio; pro fits the content tightly ─
+            const usableH = isPro ? Math.max(minUsableH, 400) : (Math.round(W * aspectRatio) - topPad - bottomPad);
+            const H = isPro ? (topPad + usableH + bottomPad) : Math.round(W * aspectRatio);
 
             // ── wrappedLabel: now W is final, compute actual wrap budget per column ───
             const plotWidthActual = W - leftMargin - rightMargin;
@@ -469,7 +482,7 @@
             const leftWraps  = colNodeNames[0].some(n => wrappedLabel[n].length > 1);
             const rightWraps = colNodeNames[numCols-1].some(n => wrappedLabel[n].length > 1);
 
-            const nodeThickness = 12;
+            const nodeThickness = isPro ? 8 : 12;
             const plotLeft = leftMargin;
             const plotRight = W - rightMargin;
             const plotWidth = Math.max(plotRight - plotLeft, 100);
@@ -480,7 +493,9 @@
             // ---- Build + lay out each column ----
             // Generous gap (research: premium examples use noticeably more vertical
             // breathing room between nodes than default chart-library packing).
-            const gapFor = (count) => Math.max(8, Math.min(30, 420 / Math.max(count, 1)));
+            const gapFor = (count) => isPro
+                ? Math.max(10, Math.min(32, 480 / Math.max(count, 1)))
+                : Math.max(8, Math.min(30, 420 / Math.max(count, 1)));
             // Global total: the largest column sum across all columns. Used so every column
             // scales its node heights against the same universe — critical when collapsed
             // intermediate columns (e.g. only Mercer@2 + Lifesight@2 visible) would otherwise
@@ -578,14 +593,26 @@
                 const ty1 = ty0 + (tNode.y1 - tNode.y0) * (l.value / tNode.value);
                 targetCursors.set(l.target, ty1);
 
-                // In branded mode every ribbon gets a source→target gradient regardless
-                // of position — edge columns, middle columns, same-entity flows, all of them.
-                const srcColor = paletteMode === 'branded' && sNode.color ? resolveThemeColorP(sNode.color) : null;
-                const tgtColor = paletteMode === 'branded' && tNode.color ? resolveThemeColorP(tNode.color) : null;
+                // In branded/house mode (existing styles) every ribbon gets a source→target
+                // gradient. Pro uses a solid fill (no cross-hue gradient). Colouring is
+                // --ribbon source|target|auto (default auto): auto uses the target colour
+                // for last-column inflows and for outflows from a pooling/intermediate
+                // node, and the source colour otherwise. Ink and dark slate fills are
+                // avoided (other end, or a light neutral fallback).
+                const useThemeColors = paletteMode === 'branded' || paletteMode === 'house';
+                const srcColor = !isPro && useThemeColors && sNode.color ? resolveThemeColorP(sNode.color) : null;
+                const tgtColor = !isPro && useThemeColors && tNode.color ? resolveThemeColorP(tNode.color) : null;
+                const srcHasIn = validLinks.some(x => x.target === l.source);
+                const srcHasOut = validLinks.some(x => x.source === l.source);
                 return {
                     source: l.source, target: l.target, value: l.value,
                     sRank, tRank, sy0, sy1, ty0, ty1,
-                    fillColor: resolveRibbonColorP(l.target, tNode.color),
+                    fillColor: isPro
+                        ? pickProRibbonFill(
+                            resolveNodeColorP(l.source, sNode.color),
+                            resolveNodeColorP(l.target, tNode.color),
+                            ribbonColorMode, sRank, tRank, numCols, srcHasIn && srcHasOut)
+                        : resolveRibbonColorP(l.target, tNode.color),
                     sourceColor: srcColor,
                     targetColorRaw: tgtColor,
                 };
@@ -693,7 +720,10 @@
                 col.forEach(n => {
                     const x = colX[c] - nodeThickness / 2;
                     const fill = resolveNodeColorP(n.name, n.color);
-                    svg += `<rect x="${x}" y="${n.y0}" width="${nodeThickness}" height="${Math.max(n.y1 - n.y0, 1)}" rx="2" fill="${fill}" stroke="rgba(28,33,39,0.10)" stroke-width="1" class="sk-node" data-name="${escapeAttr(n.name)}"><title>${escapeAttr(n.name)}: ${formatFlowValue(n.value)}</title></rect>`;
+                    const nodeRx = isPro ? 1 : 2;
+                    const nodeStroke = isPro ? 'rgba(31,41,51,0.12)' : 'rgba(28,33,39,0.10)';
+                    const nodeSw = isPro ? 0.75 : 1;
+                    svg += `<rect x="${x}" y="${n.y0}" width="${nodeThickness}" height="${Math.max(n.y1 - n.y0, 1)}" rx="${nodeRx}" fill="${fill}" stroke="${nodeStroke}" stroke-width="${nodeSw}" class="sk-node" data-name="${escapeAttr(n.name)}"><title>${escapeAttr(n.name)}: ${formatFlowValue(n.value)}</title></rect>`;
                 });
             });
 
@@ -701,7 +731,7 @@
             // Edge columns: always show name + value, floating away from the plot into the margin.
             // Middle columns: float into inter-column gap, skip nodes too thin to be visible.
 
-            laidOut.forEach((col, c) => {
+            if (!isPro) laidOut.forEach((col, c) => {
                 const isLeft  = c === 0;
                 const isRight = c === numCols - 1;
                 const isEdge  = isLeft || isRight;
@@ -745,6 +775,140 @@
                 });
             });
 
+
+            if (isPro) {
+                // Edge columns: labels sit in the outer margins with a slanted leader if nudged.
+                // Middle columns: a compact name+value block in a solid canvas-coloured pill,
+                // placed to the right of the node, or to the left if there isn't room.
+                const labelGap = 4;
+                const pillGap = 6;
+                const pillPadX = 6;
+                const pillPadY = 3;
+                const pillRx = 4;
+                const plotTop = topPad;
+                const plotBot = H - bottomPad;
+                const valueFontStr = valueFontFor(labelFontStr);
+                const inlineGap = 6;
+
+                function compactMidLabel(name, value, maxW, showVal) {
+                    const dn = displayNameFor(name);
+                    if (!dn) return null;
+                    const valueStr = showVal ? formatFlowValue(value) : '';
+                    const nameW = measureTextWidth(dn, labelFontStr);
+                    const valW = valueStr ? measureTextWidth(valueStr, valueFontStr) : 0;
+                    if (showVal && nameW + inlineGap + valW <= maxW) {
+                        return { lines: [dn], valueStr, valueOnSameLine: true, contentW: nameW + inlineGap + valW, blockH: lineHeight, nameW };
+                    }
+                    if (nameW <= maxW) {
+                        const lines = [dn];
+                        const contentW = Math.max(nameW, valW);
+                        const blockH = lineHeight + (showVal ? valueLineH : 0);
+                        return { lines, valueStr, valueOnSameLine: false, contentW, blockH, nameW };
+                    }
+                    const lines = wrapToFit(dn, Math.max(40, maxW));
+                    const lineWs = lines.map(line => measureTextWidth(line, labelFontStr));
+                    const contentW = Math.max(...lineWs, valW);
+                    const blockH = lines.length * lineHeight + (showVal ? valueLineH : 0);
+                    return { lines, valueStr, valueOnSameLine: false, contentW, blockH, nameW: lineWs[0] || 0 };
+                }
+
+                laidOut.forEach((col, c) => {
+                    const isLeft  = c === 0;
+                    const isRight = c === numCols - 1;
+                    const isEdge  = isLeft || isRight;
+                    if (isEdge) {
+                        const labelOnRight = isRight;
+                        const candidates = [];
+                        col.forEach(n => {
+                            const midY = (n.y0 + n.y1) / 2;
+                            const lines = wrappedLabel[n.name] || [];
+                            if (!lines.length) return;
+                            const showVal = true;
+                            const blockH = lines.length * lineHeight + valueLineH;
+                            candidates.push({ n, midY, lines, showVal, blockH });
+                        });
+                        const mids = spreadLabelMids(candidates.map(it => ({ midY: it.midY, blockH: it.blockH })), plotTop, plotBot, labelGap);
+                        candidates.forEach((it, i) => {
+                            const n = it.n;
+                            const midY = mids[i];
+                            const nodeMidY = it.midY;
+                            const x = colX[c];
+                            const edgeX = labelOnRight ? x + nodeThickness / 2 : x - nodeThickness / 2;
+                            const leaderLen = 12;
+                            const leaderEndX = labelOnRight ? edgeX + leaderLen : edgeX - leaderLen;
+                            const textX = labelOnRight ? leaderEndX + 6 : leaderEndX - 6;
+                            const anchor = labelOnRight ? 'start' : 'end';
+                            let lineY = midY - it.blockH / 2 + lineHeight * 0.78;
+                            svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                            svg += `<line x1="${edgeX}" y1="${nodeMidY}" x2="${leaderEndX}" y2="${midY}" class="sk-leader"/>`;
+                            it.lines.forEach(line => {
+                                svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                                lineY += lineHeight;
+                            });
+                            svg += `<text x="${textX}" y="${lineY.toFixed(1)}" text-anchor="${anchor}" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${formatFlowValue(n.value)}</text>`;
+                            svg += `</g>`;
+                        });
+                        return;
+                    }
+
+                    const roomRight = (c < numCols - 1 ? colX[c + 1] - nodeThickness / 2 : W - edgePad)
+                        - (colX[c] + nodeThickness / 2) - pillGap;
+                    const roomLeft = (colX[c] - nodeThickness / 2)
+                        - (c > 0 ? colX[c - 1] + nodeThickness / 2 : edgePad) - pillGap;
+                    const candidates = [];
+                    col.forEach(n => {
+                        const midY = (n.y0 + n.y1) / 2;
+                        const nodeHeight = n.y1 - n.y0;
+                        if (nodeHeight < 4) return;
+                        const showVal = showValues;
+                        const preferRight = roomRight >= roomLeft;
+                        const firstBudget = Math.max(40, (preferRight ? roomRight : roomLeft) - 2 * pillPadX);
+                        let layout = compactMidLabel(n.name, n.value, firstBudget, showVal);
+                        if (!layout) return;
+                        let onRight = preferRight;
+                        const pillW = layout.contentW + 2 * pillPadX;
+                        if (onRight && pillW > roomRight && layout.contentW + 2 * pillPadX <= roomLeft) onRight = false;
+                        if (!onRight && pillW > roomLeft && layout.contentW + 2 * pillPadX <= roomRight) onRight = true;
+                        // If the chosen side is still tight, re-compact to that side's budget.
+                        const sideBudget = Math.max(40, (onRight ? roomRight : roomLeft) - 2 * pillPadX);
+                        if (layout.contentW > sideBudget) {
+                            layout = compactMidLabel(n.name, n.value, sideBudget, showVal) || layout;
+                        }
+                        const blockH = layout.blockH + 2 * pillPadY;
+                        candidates.push({ n, midY, showVal, onRight, layout, blockH, pillW: layout.contentW + 2 * pillPadX });
+                    });
+                    const mids = spreadLabelMids(candidates.map(it => ({ midY: it.midY, blockH: it.blockH })), plotTop, plotBot, pillGap);
+                    candidates.forEach((it, i) => {
+                        const n = it.n;
+                        const midY = mids[i];
+                        const x = colX[c];
+                        const edgeX = it.onRight ? x + nodeThickness / 2 : x - nodeThickness / 2;
+                        const pillW = it.layout.contentW + 2 * pillPadX;
+                        const pillH = it.blockH;
+                        const pillX = it.onRight ? edgeX + pillGap : edgeX - pillGap - pillW;
+                        const pillY = midY - pillH / 2;
+                        const textLeft = pillX + pillPadX;
+                        svg += `<g class="sk-label" data-name="${escapeAttr(n.name)}">`;
+                        svg += `<rect class="sk-label-pill" x="${pillX.toFixed(1)}" y="${pillY.toFixed(1)}" width="${pillW.toFixed(1)}" height="${pillH.toFixed(1)}" rx="${pillRx}" fill="var(--sk-canvas)"/>`;
+                        let lineY = pillY + pillPadY + lineHeight * 0.78;
+                        if (it.layout.valueOnSameLine) {
+                            svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(it.layout.lines[0])}</text>`;
+                            const valX = textLeft + it.layout.nameW + inlineGap;
+                            svg += `<text x="${valX.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${escapeHtml(it.layout.valueStr)}</text>`;
+                        } else {
+                            it.layout.lines.forEach(line => {
+                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-name" font-size="${labelFontSize.toFixed(1)}">${escapeHtml(line)}</text>`;
+                                lineY += lineHeight;
+                            });
+                            if (it.showVal && it.layout.valueStr) {
+                                svg += `<text x="${textLeft.toFixed(1)}" y="${lineY.toFixed(1)}" text-anchor="start" class="sk-label-value" font-size="${valueFontSize.toFixed(1)}">${escapeHtml(it.layout.valueStr)}</text>`;
+                            }
+                        }
+                        svg += `</g>`;
+                    });
+                });
+            }
+
             // ---- Column labels (x-axis style, drawn in topPad space above the plot) ----
             // Only rendered when columnLabels[c] is a non-empty string for a given column.
             // Font size is capped so a long label can't overflow into an adjacent column's space.
@@ -770,6 +934,34 @@
                     }
                     svg += `<text x="${colX[c].toFixed(1)}" y="${colLabelY.toFixed(1)}" text-anchor="middle" class="sk-col-label" font-size="${colLabelFontSize}">${escapeHtml(displayLabel)}</text>`;
                 }
+            }
+            if (isPro && titleText) {
+                const titleFontSize = 16;
+                const titleY = 22;
+                const titleFont = `600 ${titleFontSize}px ${fontStack}`;
+                let displayTitle = titleText;
+                const maxTitleW = W - edgePad * 2;
+                if (measureTextWidth(displayTitle, titleFont) > maxTitleW) {
+                    while (displayTitle.length > 1 && measureTextWidth(displayTitle + '\u2026', titleFont) > maxTitleW) {
+                        displayTitle = displayTitle.slice(0, -1);
+                    }
+                    displayTitle += '\u2026';
+                }
+                svg += `<text x="${edgePad}" y="${titleY.toFixed(1)}" class="sk-title" font-size="${titleFontSize}">${escapeHtml(displayTitle)}</text>`;
+            }
+            if (isPro && captionText) {
+                const capFontSize = 12.5;
+                const capY = H - 14;
+                const capFont = `400 ${capFontSize}px ${fontStack}`;
+                let displayCap = captionText;
+                const maxCapW = W - edgePad * 2;
+                if (measureTextWidth(displayCap, capFont) > maxCapW) {
+                    while (displayCap.length > 1 && measureTextWidth(displayCap + '\u2026', capFont) > maxCapW) {
+                        displayCap = displayCap.slice(0, -1);
+                    }
+                    displayCap += '\u2026';
+                }
+                svg += `<text x="${edgePad}" y="${capY.toFixed(1)}" class="sk-caption" font-size="${capFontSize}">${escapeHtml(displayCap)}</text>`;
             }
             return { status: 'ok', W, H, body: svg, ribbons, validLinks, numCols };
         }
@@ -801,6 +993,34 @@
                 .sk-label-value { font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; fill: #1c2127; }
                 .sk-col-label { font-family: Inter, system-ui, sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; fill: #767f8c; }
             `;
+        const PRO_FONT_STACK = "'Segoe UI', Selawik, Helvetica, Arial, sans-serif";
+        const PRO_TOKEN_VALUES = {
+            '--sk-canvas': '#F7F8FA',
+            '--sk-neutral-ribbon': '#8DA0B3',
+            '--sk-neutral-node': '#44546A',
+            '--sk-accent-profit': '#2A7A6B',
+            '--sk-accent-cost': '#C24E00',
+            '--sk-ink': '#1F2933',
+            '--sk-ink-muted': '#5B6770'
+        };
+        function resolveProTokens(str) {
+            return str.replace(/var\((--[a-z-]+)\)/g, (m, token) => PRO_TOKEN_VALUES[token] || m);
+        }
+        const PRO_EXPORT_STYLE_CSS = `
+                .sk-leader { stroke: #C5CDD4; stroke-width: 1px; }
+                .sk-label-pill { fill: #F7F8FA; }
+                .sk-label-name, .sk-label-value, .sk-col-label {
+                    paint-order: stroke fill;
+                    stroke: #F7F8FA;
+                    stroke-width: 3px;
+                    stroke-linejoin: round;
+                }
+                .sk-label-name { font-family: ${PRO_FONT_STACK}; font-weight: 600; fill: #1F2933; letter-spacing: -0.01em; }
+                .sk-label-value { font-family: ${PRO_FONT_STACK}; font-variant-numeric: tabular-nums lining-nums; font-weight: 400; fill: #5B6770; }
+                .sk-col-label { font-family: ${PRO_FONT_STACK}; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; fill: #6B7280; }
+                .sk-title { font-family: ${PRO_FONT_STACK}; font-weight: 600; fill: #1F2933; letter-spacing: -0.015em; }
+                .sk-caption { font-family: ${PRO_FONT_STACK}; font-weight: 400; fill: #6B7280; }
+            `;
 
         // ---- Deterministic text measurement for Node (no canvas) ----
         // Advance widths of Inter (variable font instanced at opsz 14, wght 600 and 700),
@@ -824,6 +1044,99 @@
                 for (const ch of String(text)) units += table.has(ch) ? table.get(ch) : fb;
                 return units * size / INTER_UPM;
             };
+        }
+
+        // Selawik (metric-compatible with Segoe UI) advance widths, used only by --style pro.
+        // Static TTF instances at wght 400 / 600 / 700. Missing glyphs (e.g. →) fall back to 'n'.
+        const SELAWIK_UPM = 2048;
+        const SELAWIK_W400 = [561, 582, 803, 1210, 1104, 1676, 1639, 471, 618, 618, 854, 1401, 444, 819, 444, 798, 1104, 1104, 1104, 1104, 1104, 1104, 1104, 1104, 1104, 1104, 444, 444, 1401, 1401, 1401, 918, 1956, 1321, 1174, 1268, 1436, 1036, 1000, 1405, 1454, 545, 731, 1188, 964, 1839, 1532, 1544, 1147, 1544, 1225, 1088, 1073, 1407, 1272, 1913, 1208, 1132, 1168, 618, 776, 618, 1401, 850, 549, 1042, 1204, 946, 1206, 1071, 641, 1206, 1159, 496, 496, 1018, 496, 1764, 1159, 1200, 1206, 1206, 712, 869, 694, 1159, 981, 1480, 940, 991, 926, 618, 490, 618, 1401, 1104, 1104, 1104, 1024, 2048, 1501, 469, 469, 772, 772, 832, 444, 1401, 1401, 772, 1676, 1071, 1071, 1071, 1071, 1042, 1042, 1042, 1200, 1200, 1159, 1159, 946, 1159, 1114, 1036, 1321, 1159];
+        const SELAWIK_W600 = [564, 641, 941, 1212, 1153, 1743, 1706, 557, 710, 710, 906, 1432, 518, 825, 518, 871, 1153, 1153, 1153, 1153, 1153, 1153, 1153, 1153, 1153, 1153, 518, 518, 1432, 1432, 1432, 904, 1955, 1400, 1267, 1275, 1485, 1072, 1043, 1439, 1531, 614, 852, 1282, 1019, 1920, 1589, 1550, 1221, 1550, 1300, 1128, 1158, 1456, 1335, 2010, 1297, 1206, 1218, 710, 854, 710, 1432, 850, 612, 1082, 1248, 971, 1247, 1096, 737, 1247, 1208, 553, 553, 1103, 553, 1839, 1212, 1235, 1248, 1247, 781, 890, 763, 1212, 1067, 1582, 1067, 1065, 963, 710, 609, 710, 1432, 1153, 1153, 1153, 1024, 2048, 1746, 552, 552, 931, 931, 854, 518, 1432, 1432, 776, 1743, 1096, 1096, 1096, 1096, 1082, 1082, 1082, 1234, 1233, 1212, 1212, 971, 1212, 1229, 1072, 1400, 1212];
+        const SELAWIK_W700 = [565, 670, 1010, 1213, 1178, 1776, 1740, 600, 756, 756, 932, 1448, 555, 828, 555, 908, 1178, 1178, 1178, 1178, 1178, 1178, 1178, 1178, 1178, 1178, 555, 555, 1448, 1448, 1448, 897, 1954, 1440, 1313, 1278, 1510, 1090, 1065, 1456, 1569, 649, 912, 1329, 1047, 1960, 1618, 1553, 1258, 1553, 1337, 1148, 1200, 1481, 1366, 2058, 1342, 1243, 1243, 756, 893, 756, 1448, 850, 643, 1102, 1270, 983, 1268, 1108, 785, 1268, 1233, 582, 582, 1145, 582, 1876, 1239, 1252, 1270, 1268, 815, 901, 797, 1239, 1110, 1633, 1131, 1102, 981, 756, 668, 756, 1448, 1178, 1178, 1178, 1024, 2048, 1868, 594, 594, 1010, 1010, 865, 555, 1448, 1448, 778, 1776, 1108, 1108, 1108, 1108, 1102, 1102, 1102, 1251, 1250, 1239, 1239, 983, 1239, 1286, 1090, 1440, 1239];
+        function createSelawikMeasurer() {
+            const t400 = new Map(), t600 = new Map(), t700 = new Map();
+            Array.from(INTER_CHARS).forEach((ch, i) => {
+                t400.set(ch, SELAWIK_W400[i]); t600.set(ch, SELAWIK_W600[i]); t700.set(ch, SELAWIK_W700[i]);
+            });
+            const fb400 = t400.get('n'), fb600 = t600.get('n'), fb700 = t700.get('n');
+            return function measureTextWidth(text, font) {
+                const m = /(\d+)\s+(\d+(?:\.\d+)?)px/.exec(font || '');
+                const weight = m ? parseInt(m[1], 10) : 600;
+                const size = m ? parseFloat(m[2]) : 13;
+                const table = weight >= 700 ? t700 : weight >= 600 ? t600 : t400;
+                const fb = weight >= 700 ? fb700 : weight >= 600 ? fb600 : fb400;
+                let units = 0;
+                for (const ch of String(text)) units += table.has(ch) ? table.get(ch) : fb;
+                return units * size / SELAWIK_UPM;
+            };
+        }
+
+        // Pro ribbon fill: auto colours last-column inflows and pooling-node outflows
+        // by the target, everything else by the source. Ink / dark slate are skipped
+        // in favour of the other end, or a light neutral.
+        const PRO_RIBBON_FALLBACK = '#A7B1BC';
+        function concreteCssColor(color) {
+            if (!color) return PRO_RIBBON_FALLBACK;
+            let hex = color.charAt(0) === '#' ? color : resolveProTokens(String(color));
+            if (hex.charAt(0) !== '#') return PRO_RIBBON_FALLBACK;
+            return hex.toUpperCase();
+        }
+        function hexLumAndSat(hex) {
+            const h = hex.replace('#', '');
+            if (h.length !== 6) return { lum: 0, sat: 0 };
+            const r = parseInt(h.slice(0, 2), 16) / 255;
+            const g = parseInt(h.slice(2, 4), 16) / 255;
+            const b = parseInt(h.slice(4, 6), 16) / 255;
+            const lin = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+            const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            const sat = max === 0 ? 0 : (max - min) / max;
+            return { lum, sat };
+        }
+        function isDarkRibbonFill(color) {
+            const hex = concreteCssColor(color).toUpperCase();
+            if (hex === '#1F2933' || hex === '#1C2127' || hex === '#44546A') return true;
+            const { lum, sat } = hexLumAndSat(hex);
+            // Dark, low-chroma greys and slates (including shades of ink/slate).
+            return lum < 0.14 && sat < 0.42;
+        }
+        function pickProRibbonFill(srcColor, tgtColor, mode, sRank, tRank, numCols, srcIsPool) {
+            const src = concreteCssColor(srcColor);
+            const tgt = concreteCssColor(tgtColor);
+            let preferTarget = mode === 'target';
+            if (mode === 'auto') {
+                preferTarget = (tRank === numCols - 1) || (sRank > 0 && sRank < numCols - 1) || !!srcIsPool;
+            }
+            const first = preferTarget ? tgt : src;
+            const other = preferTarget ? src : tgt;
+            if (!isDarkRibbonFill(first)) return first;
+            if (!isDarkRibbonFill(other)) return other;
+            return PRO_RIBBON_FALLBACK;
+        }
+
+        // Push labels apart vertically so they do not overlap, then clamp to [minY, maxY].
+        // Used only by --style pro. items: [{midY, blockH}, ...]; returns a midY per item.
+        function spreadLabelMids(items, minY, maxY, gap) {
+            const n = items.length;
+            if (!n) return [];
+            const order = items.map((_, i) => i).sort((a, b) => items[a].midY - items[b].midY);
+            const tops = order.map(i => items[i].midY - items[i].blockH / 2);
+            for (let k = 1; k < n; k++) {
+                const minTop = tops[k - 1] + items[order[k - 1]].blockH + gap;
+                if (tops[k] < minTop) tops[k] = minTop;
+            }
+            const overflow = (tops[n - 1] + items[order[n - 1]].blockH) - maxY;
+            if (overflow > 0) {
+                for (let k = 0; k < n; k++) tops[k] -= overflow;
+            }
+            if (tops[0] < minY) {
+                tops[0] = minY;
+                for (let k = 1; k < n; k++) {
+                    tops[k] = Math.max(tops[k], tops[k - 1] + items[order[k - 1]].blockH + gap);
+                }
+            }
+            const out = new Array(n);
+            for (let k = 0; k < n; k++) out[order[k]] = tops[k] + items[order[k]].blockH / 2;
+            return out;
         }
 
         // ---- Version-2 data normalisation (mirrors the page's applyImportedSankeyData v2 path) ----
@@ -887,29 +1200,38 @@
                 paletteMode: options.paletteMode, ribbonStyle: options.ribbonStyle,
                 diagramAspect: options.diagramAspect, showValues: options.showValues,
                 showPassThrough: options.showPassThrough, globalOpacityValue: options.globalOpacityValue,
-                themePalette: options.themePalette,
-            }, { measureTextWidth: options.measureTextWidth || createInterMeasurer(), containerW: options.width || 900, locale });
+                themePalette: options.themePalette || (options.paletteMode === 'house' ? HOUSE_THEME_PALETTE : undefined),
+                title: options.title, caption: options.caption,
+                ribbonColorMode: options.ribbonColorMode,
+            }, { measureTextWidth: options.measureTextWidth || (options.ribbonStyle === 'pro' ? createSelawikMeasurer() : createInterMeasurer()), containerW: options.width || 900, locale });
             if (res.status === 'empty') throw new Error('Nothing to render: the file has no nodes or no links.');
             if (res.status === 'no-valid-flows') throw new Error('No valid flows to render: every link must join two named nodes with a value above 0.');
             let body = res.body;
             const bg = /^<rect class="sk-canvas-bg"[^>]*\/>/;
-            body = options.background ? body.replace(bg, m => resolveTokens(m)) : body.replace(bg, '');
-            body = body.replace(/ (fill|stroke)="([^"]*var\([^"]*)"/g, (m, attr, val) => ` ${attr}="${resolveTokens(val)}"`);
+            const isPro = options.ribbonStyle === 'pro';
+            const resolve = isPro ? resolveProTokens : resolveTokens;
+            const exportCss = isPro ? PRO_EXPORT_STYLE_CSS : EXPORT_STYLE_CSS;
+            body = options.background ? body.replace(bg, m => resolve(m)) : body.replace(bg, '');
+            body = body.replace(/ (fill|stroke)="([^"]*var\([^"]*)"/g, (m, attr, val) => ` ${attr}="${resolve(val)}"`);
             // A raw newline inside an attribute is read as a space by XML parsers; the page's
             // XMLSerializer writes it as &#xA;. Do the same so CLI output matches app exports.
             body = body.replace(/ d="([^"]*)"/g, (m, val) => ` d="${val.replace(/\n/g, '&#xA;')}"`);
             const desc = escapeHtml(accessibleSummaryText(res.validLinks, locale));
-            return `<svg xmlns="http://www.w3.org/2000/svg" id="sankey-svg" viewBox="0 0 ${res.W} ${res.H}" style="width:100%; height:auto; display:block;" role="img" aria-labelledby="sankey-a11y-summary">`
-                + `<style>${EXPORT_STYLE_CSS}</style><desc id="sankey-a11y-summary">${desc}</desc>${body}</svg>\n`;
+            const sizeAttrs = isPro ? ` width="${res.W}" height="${res.H}"` : '';
+            const styleAttr = isPro ? ' style="display:block;"' : ' style="width:100%; height:auto; display:block;"';
+            return `<svg xmlns="http://www.w3.org/2000/svg" id="sankey-svg"${sizeAttrs} viewBox="0 0 ${res.W} ${res.H}"${styleAttr} role="img" aria-labelledby="sankey-a11y-summary">`
+                + `<style>${exportCss}</style><desc id="sankey-a11y-summary">${desc}</desc>${body}</svg>\n`;
         }
 
         return {
-            DEFAULT_THEME_PALETTE, THEME_TINT_PERCENTS, THEME_SHADE_PERCENTS,
+            DEFAULT_THEME_PALETTE, HOUSE_THEME_PALETTE, THEME_TINT_PERCENTS, THEME_SHADE_PERCENTS,
             mixToward, deriveVariant, resolveThemeColor,
             computePassThroughGraph, assignColumnsRaw, assignColumns, layoutColumn,
             semanticRole, resolveNodeColor, resolveRibbonColor, formatFlowValue,
             escapeHtml, escapeAttr, renderDiagramBody, accessibleSummaryText,
             SK_TOKEN_VALUES, resolveTokens, EXPORT_STYLE_CSS,
-            createInterMeasurer, normalizeV2, renderStandaloneSvg,
+            PRO_TOKEN_VALUES, resolveProTokens, PRO_EXPORT_STYLE_CSS, PRO_FONT_STACK,
+            createInterMeasurer, createSelawikMeasurer, spreadLabelMids, pickProRibbonFill, isDarkRibbonFill,
+            normalizeV2, renderStandaloneSvg,
         };
 });
